@@ -181,7 +181,7 @@ class ShopPillowCircleRound extends StatefulWidget {
 }
 
 class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with TickerProviderStateMixin {
-  late List<AnimationController> _controllers;
+  late AnimationController _masterController;
   late MotionProfile _profile;
 
   double _separationForce    = 45.0;
@@ -191,7 +191,6 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
 
   static const double imageSize = 85.0;
 
-  // Track scroll interaction values directly tied to the Stack position rules
   double _scrollOffset = 0.0;
   bool _isAnimationComplete = false;
 
@@ -218,19 +217,19 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
+    _masterController.dispose();
     super.dispose();
   }
 
   void _buildControllers() {
-    _controllers = List.generate(
-      _labels.length,
-          (_) => AnimationController(vsync: this, duration: _profile.dynamicDuration),
+    _masterController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: (_profile.dynamicDuration.inMilliseconds * 1.8).toInt()),
     );
   }
 
   void _reinitControllers() {
-    for (final c in _controllers) c.dispose();
+    _masterController.dispose();
     _buildControllers();
     setState(() {});
   }
@@ -238,11 +237,7 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
   Future<void> _playAnimation() async {
     _resetAnimation();
 
-    // Spacing stagger time between items
-    final int staggerDelay = (_profile.dynamicDuration.inMilliseconds * 0.050).toInt();
-
-    // Explicitly listen to the final tail controller to toggle scroll mechanics immediately
-    _controllers.last.addStatusListener((status) {
+    _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() {
           _isAnimationComplete = true;
@@ -250,31 +245,40 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
       }
     });
 
-    for (int i = 0; i < _controllers.length; i++) {
-      _controllers[i].forward();
-      await Future.delayed(Duration(milliseconds: staggerDelay));
-    }
+    _masterController.forward();
   }
 
   void _resetAnimation() {
-    for (final c in _controllers) c.reset();
+    _masterController.reset();
     setState(() {
       _scrollOffset = 0.0;
       _isAnimationComplete = false;
     });
   }
 
-// ─── Cubic Bézier (1-D) matching your physics file exactly ──────────────────
-  double _cubicBez(double t, double p1, double p2) {
-    final u = 1 - t;
-    return 3 * u * u * t * p1 + 3 * u * t * t * p2;
+  // Pure geometry path evaluation function mapping distance -> coordinates
+  Offset _getPointOnPath(double d, double diagLen) {
+    final double r       = _nRadius  * diagLen;
+    final double centreX = _nCentreX * diagLen;
+    final double centreY = _nCentreY * diagLen;
+
+    final double path1EndX = _nEntryX * diagLen;
+    final double path1EndY = _nEntryY * diagLen;
+
+    final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
+
+    if (d <= dist1) {
+      if (dist1 == 0) return Offset.zero;
+      final double t = d / dist1;
+      return Offset(path1EndX * t, path1EndY * t);
+    } else {
+      final double t = (d - dist1) / (r * _sweepCW);
+      final double theta = _angEntry + (t * _sweepCW);
+      return Offset(centreX + r * math.cos(theta), centreY + r * math.sin(theta));
+    }
   }
 
-  // ─── Continuous Uninterrupted Path Calculation ──────────────────────────
   ({double x, double y, double opacity}) _cardState(int i, double diagLen, double screenW) {
-    final double pathT = _controllers[i].value;
-
-    // Geometry parameters
     final double r       = _nRadius  * diagLen;
     final double centreX = _nCentreX * diagLen;
     final double centreY = _nCentreY * diagLen;
@@ -286,83 +290,46 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final double exitX = centreX + r * math.cos(exitTheta);
     final double exitY = centreY + r * math.sin(exitTheta);
 
-    // Fixed track segment calibration
     final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
     final double dist2 = r * _sweepCW;
     final double loopDist = dist1 + dist2;
 
-    // Track spacing boundaries
-    const double cardSize = imageSize;
-    const double finalSpacing = 10.0;
-    final int reverseIndex = _controllers.length - 1 - i;
-
-    final double packedRestPosition = reverseIndex * cardSize;
-    final double expandedRestPosition = reverseIndex * (cardSize + finalSpacing);
-
-    // Calculate maximum distance matching the absolute length of the train track line
-    final double maxDist3 = (_controllers.length - 1) * (cardSize + finalSpacing);
+    final double maxDist3 = (_labels.length - 1) * imageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
-    // Individual distance traveled along track
-    final double currentDist = pathT * absoluteMaxDistance;
+    // The entire chain position relies on the master timeline value tracker
+    final double masterDistance = _masterController.value * absoluteMaxDistance;
+    final double currentDist = masterDistance - (i * imageSize);
+
+    // Keep hidden until its calculated arrival sequence window opens
+    if (currentDist < 0) {
+      return (x: 0.0, y: 0.0, opacity: 0.0);
+    }
+
+    // 15px smooth alpha fade-in ramp up from (0,0) entry coordinate point
+    final double opacity = (currentDist / 15.0).clamp(0.0, 1.0);
 
     double currentX = 0.0;
     double currentY = 0.0;
 
-    // ── 1. CORE MOTION LAYOUT TRACK ──
-    if (currentDist <= dist1) {
-      final double t = currentDist / dist1;
-      currentX = path1EndX * t;
-      currentY = path1EndY * t;
-    } else if (currentDist <= loopDist) {
-      final double t = (currentDist - dist1) / dist2;
-      final double theta = _angEntry + (t * _sweepCW);
-      currentX = centreX + r * math.cos(theta);
-      currentY = centreY + r * math.sin(theta);
+    if (currentDist <= loopDist) {
+      // While on track layers, evaluate exact shared coordinates to retain true 0px margins
+      final Offset point = _getPointOnPath(currentDist, diagLen);
+      currentX = point.dx;
+      currentY = point.dy;
     } else {
+      // Once on the flat linear track, stack cleanly using pure tail box offsets
       final double distanceOnExitLine = currentDist - loopDist;
+      final int reverseIndex = _labels.length - 1 - i;
+      final double packedRestPosition = reverseIndex * imageSize;
 
-      if (distanceOnExitLine >= packedRestPosition) {
-        currentX = exitX + packedRestPosition;
-        currentY = exitY;
-      } else {
-        currentX = exitX + distanceOnExitLine;
-        currentY = exitY;
-      }
+      currentX = exitX + math.min(distanceOnExitLine, packedRestPosition);
+      currentY = exitY;
     }
 
-    // ── 2. INSTANT GEOMETRIC SPRING POP TRIGGER ──
-    // Track the physical location of the trailing card (the last controller in the stack)
-    final double lastCardDist = _controllers.last.value * absoluteMaxDistance;
-
-    // The instant the trailing card crosses the loop exit point, start the pop!
-    if (lastCardDist > loopDist) {
-      // Calculate a local progress timeline based purely on the last card's remaining journey
-      final double totalRemainingTrack = absoluteMaxDistance - loopDist;
-      final double currentProgressTrack = lastCardDist - loopDist;
-
-      final double tGlobalFinish = totalRemainingTrack > 0
-          ? (currentProgressTrack / totalRemainingTrack).clamp(0.0, 1.0)
-          : 1.0;
-
-      // Extract structural physics handles
-      final double p1 = _separationSpring * 0.9 + 0.05;
-      final double p2 = (1.0 - _separationSpring) * 0.9 + 0.05;
-
-      // Compute the exact bounce displacement pulse
-      final double springFactor = _cubicBez(tGlobalFinish, p1, p2);
-      final double sepX = springFactor * _separationForce;
-
-      // Smoothly expand the structural spacing gaps concurrently with the arrival deceleration
-      final double dynamicSpacingOffset = (expandedRestPosition - packedRestPosition) * tGlobalFinish;
-
-      currentX += dynamicSpacingOffset - sepX;
-    }
-
-    return (x: currentX, y: currentY, opacity: 1.0);
+    return (x: currentX, y: currentY, opacity: opacity);
   }
 
-  @override
   @override
   Widget build(BuildContext context) {
     final double screenH = MediaQuery.of(context).size.height;
@@ -372,16 +339,12 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final double startLeft = screenW * 0.55;
     const double startTop  = 30.0;
 
-    // Calculate exactly where the track ends and how wide the items are
     final double r = _nRadius * diagLen;
     final double centreX = _nCentreX * diagLen;
     final double exitTheta = _angEntry + _sweepCW;
     final double exitX = centreX + r * math.cos(exitTheta);
 
-    const double finalSpacing = 10.0;
-    final double totalCardsWidth = (_labels.length * imageSize) + ((_labels.length - 1) * finalSpacing);
-
-    // Total physical width of the scroll workspace
+    final double totalCardsWidth = _labels.length * imageSize;
     final double totalContentWidth = startLeft + exitX + totalCardsWidth + 40.0;
 
     return Scaffold(
@@ -392,20 +355,16 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                // Automatically unlocks BouncingScrollPhysics on iOS & AlwaysScrollable everywhere
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 child: AnimatedBuilder(
-                  animation: Listenable.merge(_controllers),
+                  animation: _masterController,
                   builder: (context, _) => Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // Invisible spacer that creates native scrollable bounds matching your math
                       SizedBox(
                         width: totalContentWidth,
                         height: screenH,
                       ),
-
-                      // Your original structural mapping loop remains completely untouched
                       ...List.generate(_labels.length, (i) {
                         final state = _cardState(i, diagLen, screenW);
                         return Positioned(
@@ -499,11 +458,6 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
       borderRadius: BorderRadius.circular(12),
       boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
     ),
-    child: Center(
-      child: Text(
-        _labels[index],
-        style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-      ),
-    ),
+    child: Image.asset("assets/images/sample${index%2==0?'2':''}.jpg"),
   );
 }
