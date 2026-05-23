@@ -297,28 +297,35 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final double maxDist3 = (_labels.length - 1) * imageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
-    // The entire chain position relies on the master timeline value tracker
     final double masterDistance = _masterController.value * absoluteMaxDistance;
-    final double currentDist = masterDistance - (i * imageSize);
 
-    // Keep hidden until its calculated arrival sequence window opens
+    // Base uniform spacing metric
+    double currentDist = masterDistance - (i * imageSize);
+
     if (currentDist < 0) {
       return (x: 0.0, y: 0.0, opacity: 0.0);
     }
 
-    // 15px smooth alpha fade-in ramp up from (0,0) entry coordinate point
     final double opacity = (currentDist / 15.0).clamp(0.0, 1.0);
 
     double currentX = 0.0;
     double currentY = 0.0;
 
     if (currentDist <= loopDist) {
-      // While on track layers, evaluate exact shared coordinates to retain true 0px margins
+      // FIX: Apply a uniform 4px separation cushion strictly on the straight drop path.
+      // This stops them from overlapping vertically without multiplying or adding extra gaps.
+      if (currentDist <= dist1 && i > 0) {
+        const double uniformDropBuffer = 4.0;
+        final double closingFactor = (1.0 - (currentDist / dist1)).clamp(0.0, 1.0);
+        currentDist -= (uniformDropBuffer * closingFactor);
+
+        if (currentDist < 0) currentDist = 0;
+      }
+
       final Offset point = _getPointOnPath(currentDist, diagLen);
       currentX = point.dx;
       currentY = point.dy;
     } else {
-      // Once on the flat linear track, stack cleanly using pure tail box offsets
       final double distanceOnExitLine = currentDist - loopDist;
       final int reverseIndex = _labels.length - 1 - i;
       final double packedRestPosition = reverseIndex * imageSize;
@@ -458,6 +465,12 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
       borderRadius: BorderRadius.circular(12),
       boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
     ),
-    child: Image.asset("assets/images/sample${index%2==0?'2':''}.jpg"),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.asset(
+        "assets/images/sample${index % 2 == 0 ? '2' : ''}.jpg",
+        fit: BoxFit.cover,
+      ),
+    ),
   );
 }
