@@ -19,6 +19,8 @@ class _ControlsData {
   double mass, stiffness, damping, drag;
   double separationForce, separationSpring;
   double dropDistanceFactor, dropDistance;
+  double overshootPx;
+  double targetSpacing;
 
   _ControlsData({
     required this.mass,
@@ -29,6 +31,8 @@ class _ControlsData {
     required this.separationSpring,
     required this.dropDistanceFactor,
     required this.dropDistance,
+    required this.overshootPx,
+    required this.targetSpacing,
   });
 }
 
@@ -37,6 +41,8 @@ class _ControlsSheet extends StatefulWidget {
   final double mass, stiffness, damping, drag;
   final double separationForce, separationSpring;
   final double dropDistanceFactor, dropDistance;
+  final double overshootPx;
+  final double targetSpacing;
   final void Function(_ControlsData) onChanged;
 
   const _ControlsSheet({
@@ -48,6 +54,8 @@ class _ControlsSheet extends StatefulWidget {
     required this.separationSpring,
     required this.dropDistanceFactor,
     required this.dropDistance,
+    required this.overshootPx,
+    required this.targetSpacing,
     required this.onChanged,
   });
 
@@ -70,6 +78,8 @@ class _ControlsSheetState extends State<_ControlsSheet> {
       separationSpring: widget.separationSpring,
       dropDistanceFactor: widget.dropDistanceFactor,
       dropDistance: widget.dropDistance,
+      overshootPx: widget.overshootPx,
+      targetSpacing: widget.targetSpacing,
     );
   }
 
@@ -161,12 +171,15 @@ class _ControlsSheetState extends State<_ControlsSheet> {
                   _slider(label: 'Stiffness', value: _data.stiffness, min: 10.0, max: 300.0, onChanged: (v) => _data.stiffness = v),
                   _slider(label: 'Damping', value: _data.damping, min: 1.0, max: 80.0, onChanged: (v) => _data.damping = v),
                   _slider(label: 'Drag', value: _data.drag, min: 0.0, max: 1.0, onChanged: (v) => _data.drag = v),
+                  _sectionTitle('PULL BACK'),
+                  _slider(label: 'Target Spacing', value: _data.targetSpacing, min: 0.0, max: 80.0, onChanged: (v) => _data.targetSpacing = v),
+                  _slider(label: 'Overshoot', value: _data.overshootPx, min: 0.0, max: 60.0, onChanged: (v) => _data.overshootPx = v),
                   _sectionTitle('DROP'),
                   _slider(label: 'Drop Distance', value: _data.dropDistance, min: 0.0, max: 400.0, onChanged: (v) => _data.dropDistance = v),
                   _slider(label: 'Drop Distance Factor', value: _data.dropDistanceFactor, min: 0.0, max: 1.0, divisions: 100, onChanged: (v) => _data.dropDistanceFactor = v),
-                  _sectionTitle('SEPARATION'),
-                  _slider(label: 'Separation Force', value: _data.separationForce, min: 0.0, max: 120.0, onChanged: (v) => _data.separationForce = v),
-                  _slider(label: 'Separation Spring', value: _data.separationSpring, min: 0.0, max: 1.0, onChanged: (v) => _data.separationSpring = v),
+                  // _sectionTitle('SEPARATION'),
+                  // _slider(label: 'Separation Force', value: _data.separationForce, min: 0.0, max: 120.0, onChanged: (v) => _data.separationForce = v),
+                  // _slider(label: 'Separation Spring', value: _data.separationSpring, min: 0.0, max: 1.0, onChanged: (v) => _data.separationSpring = v),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -195,31 +208,27 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
   double _separationSpring   = 0.50;
   double _dropDistanceFactor = 0.35;
   double _dropDistance       = 60.0;
+  double _overshootPx        = 1.0;
+  double _targetSpacing      = 10.0;
 
-  static const double imageSize    = 80.0;
-  static const double targetSpacing = 10.0;
+  static const double imageSize = 80.0;
 
-  // ── Timeline split point ──────────────────────────────────────────────
-  // [0.0 → pathPhase]  drives the path animation (same logic as before,
-  //                    but master value is first remapped to [0..1]).
-  // [pathPhase → 1.0]  drives the spacing expansion (replaces the old
-  //                    _spacingController).
-  static const double _pathPhase = 0.65;
+  static const double _pathPhase      = 0.65;
   static const double _spacingOverlap = 0.15;
+  static const double _peakAt         = 0.68;
 
   bool _isAnimationComplete = false;
 
-  // Geometric layout parameters (unchanged)
   static const double _nEntryX  = -0.2230;
   static const double _nEntryY  =  0.9749;
   static const double _nCentreX = -0.4447;
   static const double _nCentreY =  0.9459;
   static const double _nRadius  =  0.2141;
-  static const double _angEntry =  7.4  * math.pi / 180.0;
-  static const double _sweepCW  = 256.9 * math.pi / 180.0;
+  static const double _angEntry =  7.4   * math.pi / 180.0;
+  static const double _sweepCW  =  256.9 * math.pi / 180.0;
 
   final List<String> _labels = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L','M','N','0','P','Q','R','S','T','U','V','W','X','Y','Z'
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
   ];
 
   @override
@@ -236,20 +245,12 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
   }
 
   void _buildController() {
-    // Total duration covers both phases.
-    // The spacing phase was 800 ms; scale the overall duration so that the
-    // tail [pathPhase → 1.0] maps to roughly 800 ms.
     final int pathMs    = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
-    final int spacingMs = 800;
-    // pathMs covers the [0 → _pathPhase] fraction of the total:
-    //   pathMs / total = _pathPhase  →  total = pathMs / _pathPhase
-    // But we also want [1 - _pathPhase] * total ≈ spacingMs, so we take
-    // the larger of the two to honour both intent durations.
-    final int totalMs = math.max(
+    const int spacingMs = 800;
+    final int totalMs   = math.max(
       (pathMs / _pathPhase).toInt(),
       pathMs + spacingMs,
     );
-
     _masterController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: totalMs),
@@ -262,30 +263,21 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
     setState(() {});
   }
 
-  // ── Derived progress helpers ───────────────────────────────────────────
-
-  /// Progress of the path phase, normalised to [0, 1].
   double get _pathProgress =>
       (_masterController.value / _pathPhase).clamp(0.0, 1.0);
 
-  /// Progress of the spacing phase, normalised to [0, 1].
-  /// Zero until the path phase completes.
   double get _spacingProgress {
-    // Start = pathPhase - overlap, so spacing begins before path finishes.
     final double start = _pathPhase - _spacingOverlap;
-    return ((_masterController.value - start) / (1.0 - start))
-        .clamp(0.0, 1.0);
+    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
   }
 
   Future<void> _playAnimation() async {
     _resetAnimation();
-
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _isAnimationComplete = true);
       }
     });
-
     _masterController.forward();
   }
 
@@ -294,43 +286,40 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
     setState(() => _isAnimationComplete = false);
   }
 
-  // ── Geometry (unchanged) ───────────────────────────────────────────────
   Offset _getPointOnPath(double d, double diagLen) {
-    final double r       = _nRadius  * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double centreY = _nCentreY * diagLen;
-    final double path1EndX = _nEntryX * diagLen;
-    final double path1EndY = _nEntryY * diagLen;
-    final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
+    final double r         = _nRadius  * diagLen;
+    final double centreX   = _nCentreX * diagLen;
+    final double centreY   = _nCentreY * diagLen;
+    final double path1EndX = _nEntryX  * diagLen;
+    final double path1EndY = _nEntryY  * diagLen;
+    final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
 
     if (d <= dist1) {
       if (dist1 == 0) return Offset.zero;
       final double t = d / dist1;
       return Offset(path1EndX * t, path1EndY * t);
     } else {
-      final double t = (d - dist1) / (r * _sweepCW);
+      final double t     = (d - dist1) / (r * _sweepCW);
       final double theta = _angEntry + (t * _sweepCW);
       return Offset(centreX + r * math.cos(theta), centreY + r * math.sin(theta));
     }
   }
 
   ({double x, double y, double opacity}) _cardState(int i, double diagLen, double screenW) {
-    final double r       = _nRadius  * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double centreY = _nCentreY * diagLen;
-    final double path1EndX = _nEntryX * diagLen;
-    final double path1EndY = _nEntryY * diagLen;
+    final double r         = _nRadius  * diagLen;
+    final double centreX   = _nCentreX * diagLen;
+    final double centreY   = _nCentreY * diagLen;
+    final double path1EndX = _nEntryX  * diagLen;
+    final double path1EndY = _nEntryY  * diagLen;
     final double exitTheta = _angEntry + _sweepCW;
-    final double exitX = centreX + r * math.cos(exitTheta);
-    final double exitY = centreY + r * math.sin(exitTheta);
-    final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
-    final double dist2 = r * _sweepCW;
-    final double loopDist = dist1 + dist2;
-    final double maxDist3 = (_labels.length - 1) * imageSize;
+    final double exitX     = centreX + r * math.cos(exitTheta);
+    final double exitY     = centreY + r * math.sin(exitTheta);
+    final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
+    final double dist2     = r * _sweepCW;
+    final double loopDist  = dist1 + dist2;
+    final double maxDist3  = (_labels.length - 1) * imageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
-    // Use _pathProgress (0→1) instead of raw _masterController.value so the
-    // path animation occupies only the first _pathPhase of the timeline.
     final double masterDistance = _pathProgress * absoluteMaxDistance;
     double currentDist = masterDistance - (i * imageSize);
 
@@ -349,33 +338,26 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
       currentY = point.dy;
     } else {
       final double distanceOnExitLine = currentDist - loopDist;
-      final int reverseIndex = _labels.length - 1 - i;
+      final int reverseIndex          = _labels.length - 1 - i;
       final double packedRestPosition = reverseIndex * imageSize;
       currentX = exitX + math.min(distanceOnExitLine, packedRestPosition);
       currentY = exitY;
     }
 
-    // ── Spacing drift — driven by _spacingProgress ─────────────────────
-    final int reverseIndex = _labels.length - 1 - i;
+    // ── Spacing drift with pull-back ───────────────────────────────────
+    final int reverseIndex        = _labels.length - 1 - i;
     final double cardStaggerStart = i * 0.01;
     final double dynamicNormalizedProgress =
     ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
         .clamp(0.0, 1.0);
 
-// Phase 1 (0→0.7): expand to targetSpacing + overshootPx
-// Phase 2 (0.7→1.0): pull back to targetSpacing
-    const double overshootPx = 1.0;  // tune this — larger = more visible snap
-    const double peakAt      = 0.68;  // when the overshoot peaks
-
     double spacingAtThisFrame;
-    if (dynamicNormalizedProgress <= peakAt) {
-      // Drive from 0 → (targetSpacing + overshootPx)
-      final double t = _smootherstep(dynamicNormalizedProgress / peakAt);
-      spacingAtThisFrame = (targetSpacing + overshootPx) * t;
+    if (dynamicNormalizedProgress <= _peakAt) {
+      final double t = _smootherstep(dynamicNormalizedProgress / _peakAt);
+      spacingAtThisFrame = (_targetSpacing + _overshootPx) * t;
     } else {
-      // Pull back from (targetSpacing + overshootPx) → targetSpacing
-      final double t = _smootherstep((dynamicNormalizedProgress - peakAt) / (1.0 - peakAt));
-      spacingAtThisFrame = (targetSpacing + overshootPx) - (overshootPx * t);
+      final double t = _smootherstep((dynamicNormalizedProgress - _peakAt) / (1.0 - _peakAt));
+      spacingAtThisFrame = (_targetSpacing + _overshootPx) - (_overshootPx * t);
     }
 
     final double totalDrift = reverseIndex * spacingAtThisFrame;
@@ -392,11 +374,11 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
     final double startLeft = screenW * 0.55;
     const double startTop  = 30.0;
 
-    final double r = _nRadius * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double exitTheta = _angEntry + _sweepCW;
-    final double exitX = centreX + r * math.cos(exitTheta);
-    final double totalCardsWidth = _labels.length * (imageSize + targetSpacing);
+    final double r             = _nRadius * diagLen;
+    final double centreX       = _nCentreX * diagLen;
+    final double exitTheta     = _angEntry + _sweepCW;
+    final double exitX         = centreX + r * math.cos(exitTheta);
+    final double totalCardsWidth   = _labels.length * (imageSize + _targetSpacing);
     final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
 
     return Scaffold(
@@ -409,7 +391,6 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
                 scrollDirection: Axis.horizontal,
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 child: AnimatedBuilder(
-                  // Only one animation to listen to now
                   animation: _masterController,
                   builder: (context, _) => Stack(
                     clipBehavior: Clip.none,
@@ -482,6 +463,8 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
         separationSpring: _separationSpring,
         dropDistanceFactor: _dropDistanceFactor,
         dropDistance: _dropDistance,
+        overshootPx: _overshootPx,
+        targetSpacing: _targetSpacing,
         onChanged: (d) {
           setState(() {
             _profile
@@ -493,6 +476,8 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
             _separationSpring   = d.separationSpring;
             _dropDistanceFactor = d.dropDistanceFactor;
             _dropDistance       = d.dropDistance;
+            _overshootPx        = d.overshootPx;
+            _targetSpacing      = d.targetSpacing;
           });
           _reinitController();
         },
