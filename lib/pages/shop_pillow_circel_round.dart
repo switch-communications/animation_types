@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:animation_types/widget/physics_controllers.dart';
 import 'package:flutter/material.dart';
 
-// Smooth profile smoothing curve
 double _smootherstep(double t) {
   t = t.clamp(0.0, 1.0);
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
@@ -180,9 +179,9 @@ class ShopPillowCircleRound extends StatefulWidget {
   State<ShopPillowCircleRound> createState() => _ShopPillowCircleRoundState();
 }
 
-class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with TickerProviderStateMixin {
+class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
+    with TickerProviderStateMixin {
   late AnimationController _masterController;
-  late AnimationController _spacingController; // NEW: Dedicated spacing controller
   late MotionProfile _profile;
 
   double _separationForce    = 45.0;
@@ -190,20 +189,26 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
   double _dropDistanceFactor = 0.35;
   double _dropDistance       = 60.0;
 
-  static const double imageSize = 80.0;
-  static const double targetSpacing = 10.0; // Target spacing gap to inject after path completes
+  static const double imageSize    = 80.0;
+  static const double targetSpacing = 10.0;
 
-  double _scrollOffset = 0.0;
+  // ── Timeline split point ──────────────────────────────────────────────
+  // [0.0 → pathPhase]  drives the path animation (same logic as before,
+  //                    but master value is first remapped to [0..1]).
+  // [pathPhase → 1.0]  drives the spacing expansion (replaces the old
+  //                    _spacingController).
+  static const double _pathPhase = 0.65;
+  static const double _spacingOverlap = 0.15;
+
   bool _isAnimationComplete = false;
 
-  // Geometric layout parameters
+  // Geometric layout parameters (unchanged)
   static const double _nEntryX  = -0.2230;
   static const double _nEntryY  =  0.9749;
   static const double _nCentreX = -0.4447;
   static const double _nCentreY =  0.9459;
   static const double _nRadius  =  0.2141;
-
-  static const double _angEntry = 7.4  * math.pi / 180.0;
+  static const double _angEntry =  7.4  * math.pi / 180.0;
   static const double _sweepCW  = 256.9 * math.pi / 180.0;
 
   final List<String> _labels = [
@@ -214,55 +219,63 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
   void initState() {
     super.initState();
     _profile = MotionProfile(mass: 1.70, stiffness: 110.0, damping: 24.0, drag: 0.05);
-    _buildControllers();
+    _buildController();
   }
 
   @override
   void dispose() {
     _masterController.dispose();
-    _spacingController.dispose();
     super.dispose();
   }
 
-  void _buildControllers() {
+  void _buildController() {
+    // Total duration covers both phases.
+    // The spacing phase was 800 ms; scale the overall duration so that the
+    // tail [pathPhase → 1.0] maps to roughly 800 ms.
+    final int pathMs    = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
+    final int spacingMs = 800;
+    // pathMs covers the [0 → _pathPhase] fraction of the total:
+    //   pathMs / total = _pathPhase  →  total = pathMs / _pathPhase
+    // But we also want [1 - _pathPhase] * total ≈ spacingMs, so we take
+    // the larger of the two to honour both intent durations.
+    final int totalMs = math.max(
+      (pathMs / _pathPhase).toInt(),
+      pathMs + spacingMs,
+    );
+
     _masterController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: (_profile.dynamicDuration.inMilliseconds * 1.8).toInt()),
+      duration: Duration(milliseconds: totalMs),
     );
-
-    _spacingController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800), // Expansion speed configuration
-    );
-
-    // LOG: Monitor spacing values over time
-    _spacingController.addListener(() {
-      if (_spacingController.value > 0.0 && _spacingController.value < 1.0) {
-        print("[LOG] Spacing Controller Ticking: Value = ${_spacingController.value.toStringAsFixed(3)}");
-      }
-    });
   }
 
-  void _reinitControllers() {
-    print("[LOG] Reinitializing Controllers");
+  void _reinitController() {
     _masterController.dispose();
-    _spacingController.dispose();
-    _buildControllers();
+    _buildController();
     setState(() {});
   }
 
+  // ── Derived progress helpers ───────────────────────────────────────────
+
+  /// Progress of the path phase, normalised to [0, 1].
+  double get _pathProgress =>
+      (_masterController.value / _pathPhase).clamp(0.0, 1.0);
+
+  /// Progress of the spacing phase, normalised to [0, 1].
+  /// Zero until the path phase completes.
+  double get _spacingProgress {
+    // Start = pathPhase - overlap, so spacing begins before path finishes.
+    final double start = _pathPhase - _spacingOverlap;
+    return ((_masterController.value - start) / (1.0 - start))
+        .clamp(0.0, 1.0);
+  }
+
   Future<void> _playAnimation() async {
-    print("[LOG] Action triggered: _playAnimation()");
     _resetAnimation();
 
     _masterController.addStatusListener((status) {
-      print("[LOG] Master Controller Status Update: $status");
       if (status == AnimationStatus.completed) {
-        setState(() {
-          _isAnimationComplete = true;
-        });
-        print("[LOG] Master complete! Triggering _spacingController.forward()");
-        _spacingController.forward();
+        setState(() => _isAnimationComplete = true);
       }
     });
 
@@ -270,24 +283,17 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
   }
 
   void _resetAnimation() {
-    print("[LOG] Resetting animation profiles");
     _masterController.reset();
-    _spacingController.reset();
-    setState(() {
-      _scrollOffset = 0.0;
-      _isAnimationComplete = false;
-    });
+    setState(() => _isAnimationComplete = false);
   }
 
-  // Pure geometry path evaluation function mapping distance -> coordinates
+  // ── Geometry (unchanged) ───────────────────────────────────────────────
   Offset _getPointOnPath(double d, double diagLen) {
     final double r       = _nRadius  * diagLen;
     final double centreX = _nCentreX * diagLen;
     final double centreY = _nCentreY * diagLen;
-
     final double path1EndX = _nEntryX * diagLen;
     final double path1EndY = _nEntryY * diagLen;
-
     final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
 
     if (d <= dist1) {
@@ -305,35 +311,25 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final double r       = _nRadius  * diagLen;
     final double centreX = _nCentreX * diagLen;
     final double centreY = _nCentreY * diagLen;
-
     final double path1EndX = _nEntryX * diagLen;
     final double path1EndY = _nEntryY * diagLen;
-
     final double exitTheta = _angEntry + _sweepCW;
     final double exitX = centreX + r * math.cos(exitTheta);
     final double exitY = centreY + r * math.sin(exitTheta);
-
     final double dist1 = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
     final double dist2 = r * _sweepCW;
     final double loopDist = dist1 + dist2;
-
-    // Keep the master timeline tracking the original tightly-packed structural distance
     final double maxDist3 = (_labels.length - 1) * imageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
-    final double masterDistance = _masterController.value * absoluteMaxDistance;
+    // Use _pathProgress (0→1) instead of raw _masterController.value so the
+    // path animation occupies only the first _pathPhase of the timeline.
+    final double masterDistance = _pathProgress * absoluteMaxDistance;
     double currentDist = masterDistance - (i * imageSize);
-    //
-    // if (currentDist < 0) {
-    //   return (x: 0.0, y: 0.0, opacity: 0.0);
-    // }
-
-    // final double opacity = (currentDist / 15.0).clamp(0.0, 1.0);
 
     double currentX = 0.0;
     double currentY = 0.0;
 
-    // 1. Evaluate standard base path position
     if (currentDist <= loopDist) {
       if (currentDist <= dist1 && i > 0) {
         const double uniformDropBuffer = 4.0;
@@ -341,7 +337,6 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
         currentDist -= (uniformDropBuffer * closingFactor);
         if (currentDist < 0) currentDist = 0;
       }
-
       final Offset point = _getPointOnPath(currentDist, diagLen);
       currentX = point.dx;
       currentY = point.dy;
@@ -349,39 +344,27 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
       final double distanceOnExitLine = currentDist - loopDist;
       final int reverseIndex = _labels.length - 1 - i;
       final double packedRestPosition = reverseIndex * imageSize;
-
       currentX = exitX + math.min(distanceOnExitLine, packedRestPosition);
       currentY = exitY;
     }
 
-    // 2. APPLY THE DRIFT: Move cards outwards once they are on the baseline
-    // Lower indices (left side) drift further to make room for the cards behind them
+    // ── Spacing drift — driven by _spacingProgress ─────────────────────
     final int reverseIndex = _labels.length - 1 - i;
-
-    // Stagger delivery based on item index
-    // Stagger delivery based on item index
     final double cardStaggerStart = i * 0.01;
-    final double dynamicNormalizedProgress = ((_spacingController.value - cardStaggerStart) / (1.0 - cardStaggerStart)).clamp(0.0, 1.0);
+    final double dynamicNormalizedProgress =
+    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
+        .clamp(0.0, 1.0);
     final double smoothCardProgress = _smootherstep(dynamicNormalizedProgress);
-
-// Cumulative gap offset calculation
     final double totalDrift = reverseIndex * targetSpacing * smoothCardProgress;
-
-// Smoothly apply the offset shift along the baseline X axis
     currentX += totalDrift;
 
-    if (i == 4 && _spacingController.value > 0.0) {
-      print("[LOG] Card Index 4: Base X = ${(currentX - totalDrift).toStringAsFixed(1)}, Added Drift = ${totalDrift.toStringAsFixed(1)}px, TRUE RENDER X = ${currentX.toStringAsFixed(1)}");
-    }
-
-    return (x: currentX, y: currentY, opacity: 1);
+    return (x: currentX, y: currentY, opacity: 1.0);
   }
 
   @override
   Widget build(BuildContext context) {
     final double screenH = MediaQuery.of(context).size.height;
     final double screenW = MediaQuery.of(context).size.width;
-
     final double diagLen = screenH * _dropDistanceFactor + _dropDistance;
     final double startLeft = screenW * 0.55;
     const double startTop  = 30.0;
@@ -390,7 +373,6 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final double centreX = _nCentreX * diagLen;
     final double exitTheta = _angEntry + _sweepCW;
     final double exitX = centreX + r * math.cos(exitTheta);
-
     final double totalCardsWidth = _labels.length * (imageSize + targetSpacing);
     final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
 
@@ -403,16 +385,13 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                // Explicitly bind the builder layout tree to re-trigger frames on both animations
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([_masterController, _spacingController]),
+                  // Only one animation to listen to now
+                  animation: _masterController,
                   builder: (context, _) => Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      SizedBox(
-                        width: totalContentWidth,
-                        height: screenH,
-                      ),
+                      SizedBox(width: totalContentWidth, height: screenH),
                       ...List.generate(_labels.length, (i) {
                         final state = _cardState(i, diagLen, screenW);
                         return Positioned(
@@ -492,7 +471,7 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
             _dropDistanceFactor = d.dropDistanceFactor;
             _dropDistance       = d.dropDistance;
           });
-          _reinitControllers();
+          _reinitController();
         },
       ),
     );
