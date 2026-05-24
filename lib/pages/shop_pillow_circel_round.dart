@@ -323,12 +323,12 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
 
     final double masterDistance = _masterController.value * absoluteMaxDistance;
     double currentDist = masterDistance - (i * imageSize);
+    //
+    // if (currentDist < 0) {
+    //   return (x: 0.0, y: 0.0, opacity: 0.0);
+    // }
 
-    if (currentDist < 0) {
-      return (x: 0.0, y: 0.0, opacity: 0.0);
-    }
-
-    final double opacity = (currentDist / 15.0).clamp(0.0, 1.0);
+    // final double opacity = (currentDist / 15.0).clamp(0.0, 1.0);
 
     double currentX = 0.0;
     double currentY = 0.0;
@@ -374,7 +374,7 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
       print("[LOG] Card Index 4: Base X = ${(currentX - totalDrift).toStringAsFixed(1)}, Added Drift = ${totalDrift.toStringAsFixed(1)}px, TRUE RENDER X = ${currentX.toStringAsFixed(1)}");
     }
 
-    return (x: currentX, y: currentY, opacity: opacity);
+    return (x: currentX, y: currentY, opacity: 1);
   }
 
   @override
