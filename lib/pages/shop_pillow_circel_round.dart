@@ -7,6 +7,13 @@ double _smootherstep(double t) {
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
+double _easeOutBack(double t, {double overshoot = 0.18}) {
+  t = t.clamp(0.0, 1.0);
+  final double c1 = overshoot;
+  final double c3 = c1 + 1.0;
+  return 1.0 + c3 * math.pow(t - 1.0, 3) + c1 * math.pow(t - 1.0, 2);
+}
+
 // ─── Controls data bag ─────────────────────────────────────────────────────
 class _ControlsData {
   double mass, stiffness, damping, drag;
@@ -212,7 +219,7 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
   static const double _sweepCW  = 256.9 * math.pi / 180.0;
 
   final List<String> _labels = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L','M','N','0','P','Q','R','S','T','U','V','W','X','Y','Z'
   ];
 
   @override
@@ -354,8 +361,24 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound>
     final double dynamicNormalizedProgress =
     ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
         .clamp(0.0, 1.0);
-    final double smoothCardProgress = _smootherstep(dynamicNormalizedProgress);
-    final double totalDrift = reverseIndex * targetSpacing * smoothCardProgress;
+
+// Phase 1 (0→0.7): expand to targetSpacing + overshootPx
+// Phase 2 (0.7→1.0): pull back to targetSpacing
+    const double overshootPx = 1.0;  // tune this — larger = more visible snap
+    const double peakAt      = 0.68;  // when the overshoot peaks
+
+    double spacingAtThisFrame;
+    if (dynamicNormalizedProgress <= peakAt) {
+      // Drive from 0 → (targetSpacing + overshootPx)
+      final double t = _smootherstep(dynamicNormalizedProgress / peakAt);
+      spacingAtThisFrame = (targetSpacing + overshootPx) * t;
+    } else {
+      // Pull back from (targetSpacing + overshootPx) → targetSpacing
+      final double t = _smootherstep((dynamicNormalizedProgress - peakAt) / (1.0 - peakAt));
+      spacingAtThisFrame = (targetSpacing + overshootPx) - (overshootPx * t);
+    }
+
+    final double totalDrift = reverseIndex * spacingAtThisFrame;
     currentX += totalDrift;
 
     return (x: currentX, y: currentY, opacity: 1.0);
