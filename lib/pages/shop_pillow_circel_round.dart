@@ -190,7 +190,7 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
   double _dropDistanceFactor = 0.35;
   double _dropDistance       = 60.0;
 
-  static const double imageSize = 100.0;
+  static const double imageSize = 80.0;
   static const double targetSpacing = 10.0; // Target spacing gap to inject after path completes
 
   double _scrollOffset = 0.0;
@@ -359,14 +359,15 @@ class _ShopPillowCircleRoundState extends State<ShopPillowCircleRound> with Tick
     final int reverseIndex = _labels.length - 1 - i;
 
     // Stagger delivery based on item index
-    final double cardStaggerStart = i * 0.04;
+    // Stagger delivery based on item index
+    final double cardStaggerStart = i * 0.01;
     final double dynamicNormalizedProgress = ((_spacingController.value - cardStaggerStart) / (1.0 - cardStaggerStart)).clamp(0.0, 1.0);
     final double smoothCardProgress = _smootherstep(dynamicNormalizedProgress);
 
-    // Cumulative gap offset calculation
+// Cumulative gap offset calculation
     final double totalDrift = reverseIndex * targetSpacing * smoothCardProgress;
 
-    // Smoothly apply the offset shift along the baseline X axis
+// Smoothly apply the offset shift along the baseline X axis
     currentX += totalDrift;
 
     if (i == 4 && _spacingController.value > 0.0) {
