@@ -177,9 +177,6 @@ class _ControlsSheetState extends State<_ControlsSheet> {
                   _sectionTitle('DROP'),
                   _slider(label: 'Drop Distance', value: _data.dropDistance, min: 0.0, max: 400.0, onChanged: (v) => _data.dropDistance = v),
                   _slider(label: 'Drop Distance Factor', value: _data.dropDistanceFactor, min: 0.0, max: 1.0, divisions: 100, onChanged: (v) => _data.dropDistanceFactor = v),
-                  // _sectionTitle('SEPARATION'),
-                  // _slider(label: 'Separation Force', value: _data.separationForce, min: 0.0, max: 120.0, onChanged: (v) => _data.separationForce = v),
-                  // _slider(label: 'Separation Spring', value: _data.separationSpring, min: 0.0, max: 1.0, onChanged: (v) => _data.separationSpring = v),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -212,10 +209,12 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   double _targetSpacing      = 10.0;
 
   static const double imageSize = 80.0;
+  static const double targetImageSize = 200.0;
 
-  static const double _pathPhase      = 0.65;
-  static const double _spacingOverlap = 0.15;
-  static const double _peakAt         = 0.68;
+  // Global phases explicitly tied to your raw MotionProfile timeline curves
+  static const double _pathPhase      = 0.70;
+  static const double _spacingOverlap = 0.25;
+  static const double _peakAt         = 0.65;
 
   bool _isAnimationComplete = false;
 
@@ -245,15 +244,10 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    final int pathMs    = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
-    const int spacingMs = 800;
-    final int totalMs   = math.max(
-      (pathMs / _pathPhase).toInt(),
-      pathMs + spacingMs,
-    );
+    // Controller duration is now driven 1:1 by your dynamic physics calculations
     _masterController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: totalMs),
+      duration: _profile.dynamicDuration,
     );
   }
 
@@ -305,7 +299,14 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     }
   }
 
-  ({double x, double y, double opacity}) _cardState(int i, double diagLen, double screenW) {
+  double _getSizeForDistance(double dist, double loopDist) {
+    if (dist <= loopDist) return imageSize;
+    double growth = ((dist - loopDist) / 120.0).clamp(0.0, 1.0);
+    growth = Curves.easeOut.transform(growth);
+    return imageSize + (targetImageSize - imageSize) * growth;
+  }
+
+  ({double x, double y, double opacity, double size}) _cardState(int i, double diagLen, double screenW) {
     final double r         = _nRadius  * diagLen;
     final double centreX   = _nCentreX * diagLen;
     final double centreY   = _nCentreY * diagLen;
@@ -317,7 +318,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
-    final double maxDist3  = (_labels.length - 1) * imageSize;
+
+    // Spacing footprint matching targetImageSize layout shifts perfectly
+    final double maxDist3  = (_labels.length - 1) * targetImageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
     final double masterDistance = _pathProgress * absoluteMaxDistance;
@@ -325,6 +328,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
     double currentX = 0.0;
     double currentY = 0.0;
+    double currentSize = _getSizeForDistance(currentDist, loopDist);
 
     if (currentDist <= loopDist) {
       if (currentDist <= dist1 && i > 0) {
@@ -340,8 +344,22 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       final double distanceOnExitLine = currentDist - loopDist;
       final int reverseIndex          = _labels.length - 1 - i;
       final double packedRestPosition = reverseIndex * imageSize;
+
       currentX = exitX + math.min(distanceOnExitLine, packedRestPosition);
       currentY = exitY;
+
+      double overlapPreventionShift = 0.0;
+      for (int j = _labels.length - 1; j > i; j--) {
+        final double precedingCardDist = masterDistance - (j * imageSize);
+        if (precedingCardDist > loopDist) {
+          final double precedingSize = _getSizeForDistance(precedingCardDist, loopDist);
+          overlapPreventionShift += (precedingSize - imageSize);
+        }
+      }
+      currentX += overlapPreventionShift;
+
+      final double sizeDifference = currentSize - imageSize;
+      currentY -= (sizeDifference / 2);
     }
 
     // ── Spacing drift with pull-back ───────────────────────────────────
@@ -363,7 +381,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double totalDrift = reverseIndex * spacingAtThisFrame;
     currentX += totalDrift;
 
-    return (x: currentX, y: currentY, opacity: 1.0);
+    return (x: currentX, y: currentY, opacity: 1.0, size: currentSize);
   }
 
   @override
@@ -372,14 +390,14 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double screenW = MediaQuery.of(context).size.width;
     final double diagLen = screenH * _dropDistanceFactor + _dropDistance;
     final double startLeft = screenW * 0.55;
-    const double startTop  = 30.0;
+    const double startTop  = 90.0;
 
     final double r             = _nRadius * diagLen;
     final double centreX       = _nCentreX * diagLen;
     final double exitTheta     = _angEntry + _sweepCW;
     final double exitX         = centreX + r * math.cos(exitTheta);
-    final double totalCardsWidth   = _labels.length * (imageSize + _targetSpacing);
-    final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
+    final double totalCardsWidth   = _labels.length * (targetImageSize + _targetSpacing);
+    final double totalContentWidth = startLeft + exitX + totalCardsWidth + 240.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -403,7 +421,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
                           top:  startTop  + state.y,
                           child: Opacity(
                             opacity: state.opacity,
-                            child: _buildCard(i),
+                            child: _buildCard(i, state.size),
                           ),
                         );
                       }),
@@ -485,9 +503,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     );
   }
 
-  Widget _buildCard(int index) => Container(
-    width: imageSize,
-    height: imageSize,
+  Widget _buildCard(int index, double currentDynamicSize) => Container(
+    width: currentDynamicSize,
+    height: currentDynamicSize,
     decoration: BoxDecoration(
       color: Colors.blueAccent,
       borderRadius: BorderRadius.circular(12),
