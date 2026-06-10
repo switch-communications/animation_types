@@ -582,13 +582,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       onTap: () {
         onTap.call();
       },
-      child: Container(
-        color: Colors.blue,
-        width: 100,
-        height: 100,
-        child: Text("Sample"),
-        margin: EdgeInsets.symmetric(h10),
-      ),
+      child: Container(color: Colors.blue,width: 100, height: 100, child: Text("Sample"),margin: EdgeInsets.symmetric(h10),),
     );
   }
 
