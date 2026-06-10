@@ -528,6 +528,20 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       body: SafeArea(
         child: Column(
           children: [
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  rowCard(() {}),
+                  rowCard(() {}),
+                  rowCard(() {}),
+                  rowCard(() {}),
+                  rowCard(() {}),
+                  rowCard(() {}),
+                  rowCard(() {}),
+                ],
+              ),
+            ),
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -559,6 +573,21 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
             _buildActionButtons(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget rowCard(Function() onTap) {
+    return GestureDetector(
+      onTap: () {
+        onTap.call();
+      },
+      child: Container(
+        color: Colors.blue,
+        width: 100,
+        height: 100,
+        child: Text("Sample"),
+        margin: EdgeInsets.symmetric(h10),
       ),
     );
   }
