@@ -7,13 +7,6 @@ double _smootherstep(double t) {
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-double _easeOutBack(double t, {double overshoot = 0.18}) {
-  t = t.clamp(0.0, 1.0);
-  final double c1 = overshoot;
-  final double c3 = c1 + 1.0;
-  return 1.0 + c3 * math.pow(t - 1.0, 3) + c1 * math.pow(t - 1.0, 2);
-}
-
 // ─── Controls data bag ─────────────────────────────────────────────────────
 class _ControlsData {
   double mass, stiffness, damping, drag;
@@ -168,7 +161,7 @@ class _ControlsSheetState extends State<_ControlsSheet> {
                 children: [
                   _sectionTitle('MOTION PROFILE'),
                   _slider(label: 'Mass', value: _data.mass, min: 0.1, max: 5.0, onChanged: (v) => _data.mass = v),
-                  _slider(label: 'Stiffness', value: _data.stiffness, min: 10.0, max: 300.0, onChanged: (v) => _data.stiffness = v),
+                  _slider(label: 'Stiffness', value: _data.stiffness, min: 10.0, max: 600.0, onChanged: (v) => _data.stiffness = v),
                   _slider(label: 'Damping', value: _data.damping, min: 1.0, max: 80.0, onChanged: (v) => _data.damping = v),
                   _slider(label: 'Drag', value: _data.drag, min: 0.0, max: 1.0, onChanged: (v) => _data.drag = v),
                   _sectionTitle('PULL BACK'),
@@ -199,6 +192,7 @@ class ShopToTopicsPillow extends StatefulWidget {
 class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     with TickerProviderStateMixin {
   late AnimationController _masterController;
+  late Animation<double> _curvedTimeline; // ✅ Applies profile's dynamic curve
   late MotionProfile _profile;
 
   double _separationForce    = 45.0;
@@ -208,10 +202,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   double _overshootPx        = 1.0;
   double _targetSpacing      = 10.0;
 
-  static const double imageSize = 80.0;
+  static const double imageSize       = 80.0;
   static const double targetImageSize = 200.0;
 
-  // Global phases explicitly tied to your raw MotionProfile timeline curves
   static const double _pathPhase      = 0.70;
   static const double _spacingOverlap = 0.25;
   static const double _peakAt         = 0.65;
@@ -233,7 +226,13 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   @override
   void initState() {
     super.initState();
-    _profile = MotionProfile(mass: 1.70, stiffness: 110.0, damping: 24.0, drag: 0.05);
+    // ✅ Starting with profile defaults similar to your optimized template
+    _profile = MotionProfile(
+      mass:      1.25,
+      stiffness: 150.0,
+      damping:   15.0,
+      drag:      0.15,
+    );
     _buildController();
   }
 
@@ -244,10 +243,25 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    // Controller duration is now driven 1:1 by your dynamic physics calculations
+// ↙️ INCREASED MULTIPLIER: Was 2.2, bumped to 5.0 to drastically slow down the path phase
+    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 6.25).toInt();
+
+    // ↙️ INCREASED BASELINE: Was 1100, bumped to 2500 for a slower, smoother spacing distribution
+    const int spacingMs = 1500;
+
+    final int totalMs = math.max(
+      (pathMs / _pathPhase).toInt(),
+      pathMs + spacingMs,
+    );
+
     _masterController = AnimationController(
       vsync: this,
-      duration: _profile.dynamicDuration,
+      duration: Duration(milliseconds: totalMs),
+    );
+
+    _curvedTimeline = CurvedAnimation(
+      parent: _masterController,
+      curve: _profile.dynamicCurve,
     );
   }
 
@@ -257,22 +271,28 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     setState(() {});
   }
 
+  // ✅ Use the curved timeline instead of raw controller values!
+  double get _clampedValue => _curvedTimeline.value.clamp(0.0, 1.0);
+
   double get _pathProgress =>
-      (_masterController.value / _pathPhase).clamp(0.0, 1.0);
+      (_clampedValue / _pathPhase).clamp(0.0, 1.0);
 
   double get _spacingProgress {
     final double start = _pathPhase - _spacingOverlap;
-    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
+    return ((_clampedValue - start) / (1.0 - start)).clamp(0.0, 1.0);
   }
 
   Future<void> _playAnimation() async {
     _resetAnimation();
+
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _isAnimationComplete = true);
       }
     });
-    _masterController.forward();
+
+    // ✅ Fixed: Execute linear duration control instead of uncontrolled physics simulation loops
+    await _masterController.forward();
   }
 
   void _resetAnimation() {
@@ -306,7 +326,8 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     return imageSize + (targetImageSize - imageSize) * growth;
   }
 
-  ({double x, double y, double opacity, double size}) _cardState(int i, double diagLen, double screenW) {
+  ({double x, double y, double opacity, double size}) _cardState(
+      int i, double diagLen, double screenW) {
     final double r         = _nRadius  * diagLen;
     final double centreX   = _nCentreX * diagLen;
     final double centreY   = _nCentreY * diagLen;
@@ -319,15 +340,14 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
 
-    // Spacing footprint matching targetImageSize layout shifts perfectly
-    final double maxDist3  = (_labels.length - 1) * targetImageSize;
+    final double maxDist3            = (_labels.length - 1) * targetImageSize;
     final double absoluteMaxDistance = loopDist + maxDist3;
 
     final double masterDistance = _pathProgress * absoluteMaxDistance;
-    double currentDist = masterDistance - (i * imageSize);
+    double currentDist          = masterDistance - (i * imageSize);
 
-    double currentX = 0.0;
-    double currentY = 0.0;
+    double currentX    = 0.0;
+    double currentY    = 0.0;
     double currentSize = _getSizeForDistance(currentDist, loopDist);
 
     if (currentDist <= loopDist) {
@@ -366,8 +386,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final int reverseIndex        = _labels.length - 1 - i;
     final double cardStaggerStart = i * 0.01;
     final double dynamicNormalizedProgress =
-    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
-        .clamp(0.0, 1.0);
+    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart)).clamp(0.0, 1.0);
 
     double spacingAtThisFrame;
     if (dynamicNormalizedProgress <= _peakAt) {
@@ -392,11 +411,11 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double startLeft = screenW * 0.55;
     const double startTop  = 90.0;
 
-    final double r             = _nRadius * diagLen;
-    final double centreX       = _nCentreX * diagLen;
-    final double exitTheta     = _angEntry + _sweepCW;
-    final double exitX         = centreX + r * math.cos(exitTheta);
-    final double totalCardsWidth   = _labels.length * (targetImageSize + _targetSpacing);
+    final double r               = _nRadius * diagLen;
+    final double centreX         = _nCentreX * diagLen;
+    final double exitTheta       = _angEntry + _sweepCW;
+    final double exitX           = centreX + r * math.cos(exitTheta);
+    final double totalCardsWidth = _labels.length * (targetImageSize + _targetSpacing);
     final double totalContentWidth = startLeft + exitX + totalCardsWidth + 240.0;
 
     return Scaffold(
