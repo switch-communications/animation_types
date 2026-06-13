@@ -7,7 +7,13 @@ double _smootherstep(double t) {
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-// ─── Controls data bag ─────────────────────────────────────────────────────
+double _easeOutBack(double t, {double overshoot = 0.18}) {
+  t = t.clamp(0.0, 1.0);
+  final double c1 = overshoot;
+  final double c3 = c1 + 1.0;
+  return 1.0 + c3 * math.pow(t - 1.0, 3) + c1 * math.pow(t - 1.0, 2);
+}
+
 class _ControlsData {
   double mass, stiffness, damping, drag;
   double separationForce, separationSpring;
@@ -29,7 +35,6 @@ class _ControlsData {
   });
 }
 
-// ─── Bottom sheet ──────────────────────────────────────────────────────────
 class _ControlsSheet extends StatefulWidget {
   final double mass, stiffness, damping, drag;
   final double separationForce, separationSpring;
@@ -94,17 +99,8 @@ class _ControlsSheetState extends State<_ControlsSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                value.toStringAsFixed(2),
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-              ),
+              Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Text(value.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
             ],
           ),
           SliderTheme(
@@ -134,15 +130,7 @@ class _ControlsSheetState extends State<_ControlsSheet> {
 
   Widget _sectionTitle(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-    child: Text(
-      title,
-      style: const TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF6C63FF),
-        letterSpacing: 1.1,
-      ),
-    ),
+    child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6C63FF), letterSpacing: 1.1)),
   );
 
   @override
@@ -155,9 +143,7 @@ class _ControlsSheetState extends State<_ControlsSheet> {
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [
-            BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 2),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, spreadRadius: 2)],
         ),
         child: Column(
           children: [
@@ -166,18 +152,12 @@ class _ControlsSheetState extends State<_ControlsSheet> {
               child: Container(
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Animation Controls',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              ),
+              child: Text('Animation Controls', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             ),
             const Divider(height: 1),
             Expanded(
@@ -185,65 +165,16 @@ class _ControlsSheetState extends State<_ControlsSheet> {
                 controller: sc,
                 children: [
                   _sectionTitle('MOTION PROFILE'),
-                  _slider(
-                    label: 'Mass',
-                    value: _data.mass,
-                    min: 0.1,
-                    max: 5.0,
-                    onChanged: (v) => _data.mass = v,
-                  ),
-                  _slider(
-                    label: 'Stiffness',
-                    value: _data.stiffness,
-                    min: 10.0,
-                    max: 600.0,
-                    onChanged: (v) => _data.stiffness = v,
-                  ),
-                  _slider(
-                    label: 'Damping',
-                    value: _data.damping,
-                    min: 1.0,
-                    max: 80.0,
-                    onChanged: (v) => _data.damping = v,
-                  ),
-                  _slider(
-                    label: 'Drag',
-                    value: _data.drag,
-                    min: 0.0,
-                    max: 1.0,
-                    onChanged: (v) => _data.drag = v,
-                  ),
+                  _slider(label: 'Mass', value: _data.mass, min: 0.1, max: 5.0, onChanged: (v) => _data.mass = v),
+                  _slider(label: 'Stiffness', value: _data.stiffness, min: 10.0, max: 300.0, onChanged: (v) => _data.stiffness = v),
+                  _slider(label: 'Damping', value: _data.damping, min: 1.0, max: 80.0, onChanged: (v) => _data.damping = v),
+                  _slider(label: 'Drag', value: _data.drag, min: 0.0, max: 1.0, onChanged: (v) => _data.drag = v),
                   _sectionTitle('PULL BACK'),
-                  _slider(
-                    label: 'Target Spacing',
-                    value: _data.targetSpacing,
-                    min: 0.0,
-                    max: 80.0,
-                    onChanged: (v) => _data.targetSpacing = v,
-                  ),
-                  _slider(
-                    label: 'Overshoot',
-                    value: _data.overshootPx,
-                    min: 0.0,
-                    max: 60.0,
-                    onChanged: (v) => _data.overshootPx = v,
-                  ),
+                  _slider(label: 'Target Spacing', value: _data.targetSpacing, min: 0.0, max: 80.0, onChanged: (v) => _data.targetSpacing = v),
+                  _slider(label: 'Overshoot', value: _data.overshootPx, min: 0.0, max: 60.0, onChanged: (v) => _data.overshootPx = v),
                   _sectionTitle('DROP'),
-                  _slider(
-                    label: 'Drop Distance',
-                    value: _data.dropDistance,
-                    min: 0.0,
-                    max: 400.0,
-                    onChanged: (v) => _data.dropDistance = v,
-                  ),
-                  _slider(
-                    label: 'Drop Distance Factor',
-                    value: _data.dropDistanceFactor,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 100,
-                    onChanged: (v) => _data.dropDistanceFactor = v,
-                  ),
+                  _slider(label: 'Drop Distance', value: _data.dropDistance, min: 0.0, max: 400.0, onChanged: (v) => _data.dropDistance = v),
+                  _slider(label: 'Drop Distance Factor', value: _data.dropDistanceFactor, min: 0.0, max: 1.0, divisions: 100, onChanged: (v) => _data.dropDistanceFactor = v),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -255,7 +186,6 @@ class _ControlsSheetState extends State<_ControlsSheet> {
   }
 }
 
-// ─── Main widget ───────────────────────────────────────────────────────────
 class ShopToTopicsPillow extends StatefulWidget {
   const ShopToTopicsPillow({super.key});
 
@@ -266,58 +196,44 @@ class ShopToTopicsPillow extends StatefulWidget {
 class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     with TickerProviderStateMixin {
   late AnimationController _masterController;
-  late Animation<double> _curvedTimeline; // ✅ Applies profile's dynamic curve
   late MotionProfile _profile;
 
-  double _separationForce = 45.0;
-  double _separationSpring = 0.50;
+  double _separationForce    = 45.0;
+  double _separationSpring   = 0.50;
   double _dropDistanceFactor = 0.35;
-  double _dropDistance = 60.0;
-  double _overshootPx = 1.0;
-  double _targetSpacing = 10.0;
+  double _dropDistance       = 60.0;
+  double _overshootPx        = 1.0;
+  double _targetSpacing      = 10.0;
 
-  static const double imageSize = 80.0;
-  static const double targetImageSize = 250.0;
+  static const double imageSize     = 80.0;
+  static const double exitImageSize = 200.0;
 
-  static const double _pathPhase = 0.70;
-  static const double _spacingOverlap = 0.25;
-  static const double _peakAt = 0.65;
+  // _pathPhase: fraction of master controller used for the path animation.
+  // After _pathPhase the controller continues to drive the exit fan-out.
+  // We extend it to 1.0 so the full controller range is used end-to-end.
+  static const double _pathPhase      = 0.65;
+  static const double _spacingOverlap = 0.15;
+  static const double _peakAt         = 0.68;
 
   bool _isAnimationComplete = false;
 
-  static const double _nEntryX = -0.2230;
-  static const double _nEntryY = 0.9749;
+  static const double _nEntryX  = -0.2230;
+  static const double _nEntryY  =  0.9749;
   static const double _nCentreX = -0.4447;
-  static const double _nCentreY = 0.9459;
-  static const double _nRadius = 0.2141;
-  static const double _angEntry = 7.4 * math.pi / 180.0;
-  static const double _sweepCW = 256.9 * math.pi / 180.0;
+  static const double _nCentreY =  0.9459;
+  static const double _nRadius  =  0.2141;
+  static const double _angEntry =  7.4   * math.pi / 180.0;
+  static const double _sweepCW  =  256.9 * math.pi / 180.0;
 
   final List<String> _labels = [
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
+    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
   ];
+
 
   @override
   void initState() {
     super.initState();
-    // ✅ Starting with profile defaults similar to your optimized template
-    _profile = MotionProfile(
-      mass: 1.25,
-      stiffness: 150.0,
-      damping: 15.0,
-      drag: 0.15,
-    );
+    _profile = MotionProfile(mass: 1.70, stiffness: 110.0, damping: 24.0, drag: 0.05);
     _buildController();
   }
 
@@ -328,25 +244,15 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    // ↙️ INCREASED MULTIPLIER: Was 2.2, bumped to 5.0 to drastically slow down the path phase
-    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 6.25).toInt();
-
-    // ↙️ INCREASED BASELINE: Was 1100, bumped to 2500 for a slower, smoother spacing distribution
-    const int spacingMs = 1500;
-
-    final int totalMs = math.max(
+    final int pathMs    = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
+    const int spacingMs = 800;
+    final int totalMs   = math.max(
       (pathMs / _pathPhase).toInt(),
       pathMs + spacingMs,
     );
-
     _masterController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: totalMs),
-    );
-
-    _curvedTimeline = CurvedAnimation(
-      parent: _masterController,
-      curve: _profile.dynamicCurve,
     );
   }
 
@@ -356,27 +262,23 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     setState(() {});
   }
 
-  // ✅ Use the curved timeline instead of raw controller values!
-  double get _clampedValue => _curvedTimeline.value.clamp(0.0, 1.0);
-
-  double get _pathProgress => (_clampedValue / _pathPhase).clamp(0.0, 1.0);
+  double get _pathProgress =>
+      (_masterController.value / _pathPhase).clamp(0.0, 1.0);
 
   double get _spacingProgress {
     final double start = _pathPhase - _spacingOverlap;
-    return ((_clampedValue - start) / (1.0 - start)).clamp(0.0, 1.0);
+    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
   }
 
   Future<void> _playAnimation() async {
     _resetAnimation();
-
+    _logFrameCount = 0; // ← add this
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _isAnimationComplete = true);
       }
     });
-
-    // ✅ Fixed: Execute linear duration control instead of uncontrolled physics simulation loops
-    await _masterController.forward();
+    _masterController.forward();
   }
 
   void _resetAnimation() {
@@ -385,72 +287,50 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   Offset _getPointOnPath(double d, double diagLen) {
-    final double r = _nRadius * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double centreY = _nCentreY * diagLen;
-    final double path1EndX = _nEntryX * diagLen;
-    final double path1EndY = _nEntryY * diagLen;
-    final double dist1 = math.sqrt(
-      path1EndX * path1EndX + path1EndY * path1EndY,
-    );
+    final double r         = _nRadius  * diagLen;
+    final double centreX   = _nCentreX * diagLen;
+    final double centreY   = _nCentreY * diagLen;
+    final double path1EndX = _nEntryX  * diagLen;
+    final double path1EndY = _nEntryY  * diagLen;
+    final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
 
     if (d <= dist1) {
       if (dist1 == 0) return Offset.zero;
       final double t = d / dist1;
       return Offset(path1EndX * t, path1EndY * t);
     } else {
-      final double t = (d - dist1) / (r * _sweepCW);
+      final double t     = (d - dist1) / (r * _sweepCW);
       final double theta = _angEntry + (t * _sweepCW);
-      return Offset(
-        centreX + r * math.cos(theta),
-        centreY + r * math.sin(theta),
-      );
+      return Offset(centreX + r * math.cos(theta), centreY + r * math.sin(theta));
     }
   }
 
-  double _getSizeForDistance(double dist, double loopDist) {
-    if (dist <= loopDist) return imageSize;
-    double growth = ((dist - loopDist) / 120.0).clamp(0.0, 1.0);
-    growth = Curves.easeOut.transform(growth);
-    return imageSize + (targetImageSize - imageSize) * growth;
-  }
-
-  ({double x, double y, double opacity, double size}) _cardState(
-    int i,
-    double diagLen,
-    double screenW,
-  ) {
-    final double r = _nRadius * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double centreY = _nCentreY * diagLen;
-    final double path1EndX = _nEntryX * diagLen;
-    final double path1EndY = _nEntryY * diagLen;
+  ({double x, double y, double opacity, double size}) _cardState(int i, double diagLen, double screenW) {
+    final double r         = _nRadius  * diagLen;
+    final double centreX   = _nCentreX * diagLen;
+    final double centreY   = _nCentreY * diagLen;
+    final double path1EndX = _nEntryX  * diagLen;
+    final double path1EndY = _nEntryY  * diagLen;
     final double exitTheta = _angEntry + _sweepCW;
-    final double exitX = centreX + r * math.cos(exitTheta);
-    final double exitY = centreY + r * math.sin(exitTheta);
-    final double dist1 = math.sqrt(
-      path1EndX * path1EndX + path1EndY * path1EndY,
-    );
-    final double dist2 = r * _sweepCW;
-    final double loopDist = dist1 + dist2;
-
-    final double maxDist3 = (_labels.length - 1) * targetImageSize;
-    final double absoluteMaxDistance = loopDist + maxDist3;
+    final double exitX     = centreX + r * math.cos(exitTheta);
+    final double exitY     = centreY + r * math.sin(exitTheta);
+    final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
+    final double dist2     = r * _sweepCW;
+    final double loopDist  = dist1 + dist2;
+    final double maxDist3            = (_labels.length - 1) * imageSize;
+    final double absoluteMaxDistance = loopDist + maxDist3 + imageSize;
 
     final double masterDistance = _pathProgress * absoluteMaxDistance;
     double currentDist = masterDistance - (i * imageSize);
 
     double currentX = 0.0;
     double currentY = 0.0;
-    double currentSize = _getSizeForDistance(currentDist, loopDist);
+    bool   onExitLine = false;
 
-    if (currentDist <= loopDist) {
+    if (currentDist < loopDist) {
       if (currentDist <= dist1 && i > 0) {
         const double uniformDropBuffer = 4.0;
-        final double closingFactor = (1.0 - (currentDist / dist1)).clamp(
-          0.0,
-          1.0,
-        );
+        final double closingFactor = (1.0 - (currentDist / dist1)).clamp(0.0, 1.0);
         currentDist -= (uniformDropBuffer * closingFactor);
         if (currentDist < 0) currentDist = 0;
       }
@@ -458,52 +338,105 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       currentX = point.dx;
       currentY = point.dy;
     } else {
-      final double distanceOnExitLine = currentDist - loopDist;
-      final int reverseIndex = _labels.length - 1 - i;
-      final double packedRestPosition = reverseIndex * imageSize;
-
-      currentX = exitX + math.min(distanceOnExitLine, packedRestPosition);
-      currentY = exitY;
-
-      double overlapPreventionShift = 0.0;
-      for (int j = _labels.length - 1; j > i; j--) {
-        final double precedingCardDist = masterDistance - (j * imageSize);
-        if (precedingCardDist > loopDist) {
-          final double precedingSize = _getSizeForDistance(
-            precedingCardDist,
-            loopDist,
-          );
-          overlapPreventionShift += (precedingSize - imageSize);
-        }
-      }
-      currentX += overlapPreventionShift;
-
-      final double sizeDifference = currentSize - imageSize;
-      currentY -= (sizeDifference / 2);
+      onExitLine = true;
     }
 
-    // ── Spacing drift with pull-back ───────────────────────────────────
-    final int reverseIndex = _labels.length - 1 - i;
+    // ── Spacing drift ──────────────────────────────────────────────────────
+    final int reverseIndex        = _labels.length - 1 - i;
     final double cardStaggerStart = i * 0.01;
     final double dynamicNormalizedProgress =
-        ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
-            .clamp(0.0, 1.0);
+    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart)).clamp(0.0, 1.0);
 
     double spacingAtThisFrame;
     if (dynamicNormalizedProgress <= _peakAt) {
       final double t = _smootherstep(dynamicNormalizedProgress / _peakAt);
       spacingAtThisFrame = (_targetSpacing + _overshootPx) * t;
     } else {
-      final double t = _smootherstep(
-        (dynamicNormalizedProgress - _peakAt) / (1.0 - _peakAt),
-      );
+      final double t = _smootherstep((dynamicNormalizedProgress - _peakAt) / (1.0 - _peakAt));
       spacingAtThisFrame = (_targetSpacing + _overshootPx) - (_overshootPx * t);
     }
 
-    final double totalDrift = reverseIndex * spacingAtThisFrame;
-    currentX += totalDrift;
+    if (!onExitLine) {
+      final double totalDrift = reverseIndex * spacingAtThisFrame;
+      currentX += totalDrift;
 
-    return (x: currentX, y: currentY, opacity: 1.0, size: currentSize);
+      double cardSize = imageSize;
+      if (currentDist > dist1) {
+        final double arcProgress = ((currentDist - dist1) / dist2).clamp(0.0, 1.0);
+        final double rawT = arcProgress * 0.80;
+        cardSize = imageSize + (exitImageSize - imageSize) * rawT;
+      }
+
+      return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // EXIT LINE — logs added here
+    // ══════════════════════════════════════════════════════════════════════
+
+    // When did THIS card cross loopDist?
+    // masterDistance = loopDist + i*imageSize
+    // => pathProgress * absoluteMaxDistance = loopDist + i*imageSize
+    // => pathProgress = (loopDist + i*imageSize) / absoluteMaxDistance
+    // => masterCtrl   = pathProgress * _pathPhase
+    final double cardExitCtrl    = ((loopDist + i * imageSize) / absoluteMaxDistance) * _pathPhase;
+    final double remainingWindow = 1.0 - cardExitCtrl;
+    final double fanT            = remainingWindow > 0
+        ? ((_masterController.value - cardExitCtrl) / remainingWindow).clamp(0.0, 1.0)
+        : 1.0;
+
+    final double rawT     = 0.80 + 0.20 * fanT;
+    final double cardSize = imageSize + (exitImageSize - imageSize) * rawT;
+
+    final double finalSlotX = exitX + reverseIndex * cardSize;
+    currentX = exitX + (finalSlotX - exitX) * fanT;
+    currentY = exitY;
+
+    // ── LOG every card every frame on exit line ──────────────────────────
+    debugPrint(
+      '[EXIT] ctrl=${(_masterController.value * 100).toStringAsFixed(1)}%'
+          '  card=$i  rev=$reverseIndex'
+          '  cardExitCtrl=${(cardExitCtrl * 100).toStringAsFixed(1)}%'
+          '  fanT=${fanT.toStringAsFixed(3)}'
+          '  cardSize=${cardSize.toStringAsFixed(1)}'
+          '  exitX=${exitX.toStringAsFixed(1)}'
+          '  finalSlotX=${finalSlotX.toStringAsFixed(1)}'
+          '  currentX=${currentX.toStringAsFixed(1)}'
+          '  rightEdge=${(currentX + cardSize).toStringAsFixed(1)}'
+          '  gap_to_prev=${i > 0 ? "check_next_card" : "LEAD"}',
+    );
+
+    return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
+  }
+
+  int _logFrameCount = 0;
+
+  void _logCardGaps(double diagLen, double screenW) {
+    _logFrameCount++;
+    if (_logFrameCount % 10 != 0) return;
+
+    final results = List.generate(_labels.length, (i) => _cardState(i, diagLen, screenW));
+
+    final double r       = _nRadius * diagLen;
+    final double centreX = _nCentreX * diagLen;
+    final double exitX   = centreX + r * math.cos(_angEntry + _sweepCW);
+
+    final anyOnExit = results.any((r) => r.x >= exitX - 5);
+    if (!anyOnExit) return;
+
+    debugPrint('═══ GAPS @ ctrl=${(_masterController.value * 100).toStringAsFixed(1)}% ═══');
+    for (int i = 0; i < results.length - 1; i++) {
+      final curr = results[i];
+      final next = results[i + 1];
+      final gap = curr.x - (next.x + next.size);
+      debugPrint(
+        '  card[$i]←→card[${i+1}]'
+            '  [$i].x=${curr.x.toStringAsFixed(1)}'
+            '  [${i+1}].right=${(next.x + next.size).toStringAsFixed(1)}'
+            '  GAP=${gap.toStringAsFixed(1)}px'
+            '  ${gap.abs() < 2 ? "✓" : gap > 2 ? "⚠GAP" : "⚠OVERLAP"}',
+      );
+    }
   }
 
   @override
@@ -512,48 +445,47 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double screenW = MediaQuery.of(context).size.width;
     final double diagLen = screenH * _dropDistanceFactor + _dropDistance;
     final double startLeft = screenW * 0.55;
-    const double startTop = 90.0;
+    const double startTop  = 30.0;
 
-    final double r = _nRadius * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double exitTheta = _angEntry + _sweepCW;
-    final double exitX = centreX + r * math.cos(exitTheta);
-    final double totalCardsWidth =
-        _labels.length * (targetImageSize + _targetSpacing);
-    final double totalContentWidth =
-        startLeft + exitX + totalCardsWidth + 240.0;
+    final double r             = _nRadius * diagLen;
+    final double centreX       = _nCentreX * diagLen;
+    final double exitTheta     = _angEntry + _sweepCW;
+    final double exitX         = centreX + r * math.cos(exitTheta);
+    final double totalCardsWidth   = _labels.length * (exitImageSize + _targetSpacing);
+    final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            Row(children: [],),
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 child: AnimatedBuilder(
-                  animation: _masterController,
-                  builder: (context, _) => Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      SizedBox(width: totalContentWidth, height: screenH),
-                      ...List.generate(_labels.length, (i) {
-                        final state = _cardState(i, diagLen, screenW);
-                        return Positioned(
-                          left: startLeft + state.x,
-                          top: startTop + state.y,
-                          child: Opacity(
-                            opacity: state.opacity,
-                            child: _buildCard(i, state.size),
-                          ),
+                    animation: _masterController,
+                    builder: (context, _) {
+                      _logCardGaps(diagLen, screenW);
+                      return
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            SizedBox(width: totalContentWidth, height: screenH),
+                            ...List.generate(_labels.length, (i) {
+                              final state = _cardState(i, diagLen, screenW);
+                              return Positioned(
+                                left: startLeft + state.x,
+                                top: startTop + state.y,
+                                child: Opacity(
+                                  opacity: state.opacity,
+                                  child: _buildCard(i, size: state.size),
+                                ),
+                              );
+                            }),
+                          ],
                         );
-                      }),
-                    ],
-                  ),
+                    }
                 ),
               ),
             ),
@@ -575,14 +507,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF6C63FF),
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             ),
-            child: const Text(
-              'Animate',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
+            child: const Text('Animate', style: TextStyle(color: Colors.white, fontSize: 18)),
           ),
           const SizedBox(width: 12),
           ElevatedButton(
@@ -590,9 +517,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF0EEFF),
               padding: const EdgeInsets.all(18),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             ),
             child: const Icon(Icons.tune_rounded, color: Color(0xFF6C63FF)),
           ),
@@ -620,16 +545,16 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
         onChanged: (d) {
           setState(() {
             _profile
-              ..mass = d.mass
+              ..mass      = d.mass
               ..stiffness = d.stiffness
-              ..damping = d.damping
-              ..drag = d.drag;
-            _separationForce = d.separationForce;
-            _separationSpring = d.separationSpring;
+              ..damping   = d.damping
+              ..drag      = d.drag;
+            _separationForce    = d.separationForce;
+            _separationSpring   = d.separationSpring;
             _dropDistanceFactor = d.dropDistanceFactor;
-            _dropDistance = d.dropDistance;
-            _overshootPx = d.overshootPx;
-            _targetSpacing = d.targetSpacing;
+            _dropDistance       = d.dropDistance;
+            _overshootPx        = d.overshootPx;
+            _targetSpacing      = d.targetSpacing;
           });
           _reinitController();
         },
@@ -637,15 +562,13 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     );
   }
 
-  Widget _buildCard(int index, double currentDynamicSize) => Container(
-    width: currentDynamicSize,
-    height: currentDynamicSize,
+  Widget _buildCard(int index, {double size = imageSize}) => Container(
+    width: size,
+    height: size,
     decoration: BoxDecoration(
       color: Colors.blueAccent,
       borderRadius: BorderRadius.circular(12),
-      boxShadow: const [
-        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
-      ],
+      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
     ),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(12),
