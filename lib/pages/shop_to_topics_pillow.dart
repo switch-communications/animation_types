@@ -2,18 +2,6 @@ import 'dart:math' as math;
 import 'package:animation_types/widget/physics_controllers.dart';
 import 'package:flutter/material.dart';
 
-double _smootherstep(double t) {
-  t = t.clamp(0.0, 1.0);
-  return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-}
-
-double _easeOutBack(double t, {double overshoot = 0.18}) {
-  t = t.clamp(0.0, 1.0);
-  final double c1 = overshoot;
-  final double c3 = c1 + 1.0;
-  return 1.0 + c3 * math.pow(t - 1.0, 3) + c1 * math.pow(t - 1.0, 2);
-}
-
 class _ControlsData {
   double mass, stiffness, damping, drag;
   double separationForce, separationSpring;
@@ -208,13 +196,6 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   static const double imageSize     = 80.0;
   static const double exitImageSize = 200.0;
 
-  // _pathPhase: fraction of master controller used for the path animation.
-  // After _pathPhase the controller continues to drive the exit fan-out.
-  // We extend it to 1.0 so the full controller range is used end-to-end.
-  static const double _pathPhase      = 0.65;
-  static const double _spacingOverlap = 0.15;
-  static const double _peakAt         = 0.68;
-
   bool _isAnimationComplete = false;
 
   static const double _nEntryX  = -0.2230;
@@ -228,7 +209,6 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   final List<String> _labels = [
     'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
   ];
-
 
   @override
   void initState() {
@@ -244,15 +224,10 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    final int pathMs    = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
-    const int spacingMs = 800;
-    final int totalMs   = math.max(
-      (pathMs / _pathPhase).toInt(),
-      pathMs + spacingMs,
-    );
+    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 1.5).toInt();
     _masterController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: totalMs),
+      duration: Duration(milliseconds: pathMs),
     );
   }
 
@@ -262,17 +237,8 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     setState(() {});
   }
 
-  double get _pathProgress =>
-      (_masterController.value / _pathPhase).clamp(0.0, 1.0);
-
-  double get _spacingProgress {
-    final double start = _pathPhase - _spacingOverlap;
-    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
-  }
-
   Future<void> _playAnimation() async {
     _resetAnimation();
-    _logFrameCount = 0; // ← add this
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _isAnimationComplete = true);
@@ -317,120 +283,74 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist1     = math.sqrt(path1EndX * path1EndX + path1EndY * path1EndY);
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
-    final double maxDist3            = (_labels.length - 1) * imageSize;
-    final double absoluteMaxDistance = loopDist + maxDist3 + imageSize;
 
-    final double masterDistance = _pathProgress * absoluteMaxDistance;
-    double currentDist = masterDistance - (i * imageSize);
+    // ── STEP 1: Calculate Master Front-Runner Progress ──
+    // The lead position shifts smoothly across the total path window
+    final double absoluteMaxDistance = loopDist + (_labels.length * exitImageSize);
+    final double masterLeadDist = _masterController.value * absoluteMaxDistance;
+
+    // ── STEP 2: Dynamically Calculate This Individual Card's Distance ──
+    // Instead of a fixed lag, we look at how far the card is, determine its size at that spot,
+    // and stack them perfectly back-to-back using accumulated real-time widths.
+    double currentTravelDist = masterLeadDist;
+    double cardSize = imageSize;
+
+    for (int j = 0; j < i; j++) {
+      // Estimate the size of the preceding card to know how much distance to subtract
+      double approxPrecedingDist = currentTravelDist - (imageSize * 0.5);
+      double precedingSize = imageSize;
+
+      if (approxPrecedingDist > dist1 && approxPrecedingDist < loopDist) {
+        final double arcProgress = ((approxPrecedingDist - dist1) / dist2).clamp(0.0, 1.0);
+        precedingSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
+      } else if (approxPrecedingDist >= loopDist) {
+        precedingSize = exitImageSize;
+      }
+
+      // Push this card back by exactly the width of the card ahead of it
+      currentTravelDist -= precedingSize;
+    }
 
     double currentX = 0.0;
     double currentY = 0.0;
-    bool   onExitLine = false;
 
-    if (currentDist < loopDist) {
-      if (currentDist <= dist1 && i > 0) {
-        const double uniformDropBuffer = 4.0;
-        final double closingFactor = (1.0 - (currentDist / dist1)).clamp(0.0, 1.0);
-        currentDist -= (uniformDropBuffer * closingFactor);
-        if (currentDist < 0) currentDist = 0;
-      }
-      final Offset point = _getPointOnPath(currentDist, diagLen);
+    // ── STEP 3: Map Distance to Coordinates ──
+    if (currentTravelDist < loopDist) {
+      double pathDist = currentTravelDist;
+      if (pathDist < 0) pathDist = 0; // Hold behind the entry gate until pulled in
+
+      final Offset point = _getPointOnPath(pathDist, diagLen);
       currentX = point.dx;
       currentY = point.dy;
-    } else {
-      onExitLine = true;
-    }
 
-    // ── Spacing drift ──────────────────────────────────────────────────────
-    final int reverseIndex        = _labels.length - 1 - i;
-    final double cardStaggerStart = i * 0.01;
-    final double dynamicNormalizedProgress =
-    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart)).clamp(0.0, 1.0);
-
-    double spacingAtThisFrame;
-    if (dynamicNormalizedProgress <= _peakAt) {
-      final double t = _smootherstep(dynamicNormalizedProgress / _peakAt);
-      spacingAtThisFrame = (_targetSpacing + _overshootPx) * t;
-    } else {
-      final double t = _smootherstep((dynamicNormalizedProgress - _peakAt) / (1.0 - _peakAt));
-      spacingAtThisFrame = (_targetSpacing + _overshootPx) - (_overshootPx * t);
-    }
-
-    if (!onExitLine) {
-      final double totalDrift = reverseIndex * spacingAtThisFrame;
-      currentX += totalDrift;
-
-      double cardSize = imageSize;
-      if (currentDist > dist1) {
-        final double arcProgress = ((currentDist - dist1) / dist2).clamp(0.0, 1.0);
-        final double rawT = arcProgress * 0.90;
-        cardSize = imageSize + (exitImageSize - imageSize) * rawT;
+      // Update current card size based on its exact arc progress coordinate
+      if (pathDist > dist1) {
+        final double arcProgress = ((pathDist - dist1) / dist2).clamp(0.0, 1.0);
+        cardSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
       }
+    } else {
+      // ── STEP 4: Flat Exit Line (Marching Train) ──
+      final double lineExtScroll = currentTravelDist - loopDist;
+      final double trainOffset = (_labels.length - 1 - i) * exitImageSize;
 
-      return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
+      currentX = exitX + lineExtScroll;
+      currentY = exitY;
+      cardSize = exitImageSize;
+
+      // Clamp them precisely into their final packed train slots
+      if (currentX > exitX + trainOffset) {
+        currentX = exitX + trainOffset;
+      }
     }
 
-// ── Sequential exit ────────────────────────────────────────────────────
-    final double cardExitCtrl = ((loopDist + i * imageSize) / absoluteMaxDistance) * _pathPhase;
-
-    final double remainingWindow = 1.0 - cardExitCtrl;
-    final double fanT = remainingWindow > 0
-        ? ((_masterController.value - cardExitCtrl) / remainingWindow).clamp(0.0, 1.0)
-        : 1.0;
-
-    final double rawT     = 0.90 + 0.10 * fanT;
-    final double cardSize = imageSize + (exitImageSize - imageSize) * rawT;
-
-// Use fixed exitImageSize for slot calculation so positions don't shift as cards grow
-    final double finalSlotX = exitX + (_labels.length - 1 - i) * exitImageSize;
-    currentX = exitX + (finalSlotX - exitX) * _easeOutBack(fanT, overshoot: 0.10);
-    currentY = exitY;
-
-    // ── LOG every card every frame on exit line ──────────────────────────
-    debugPrint(
-      '[EXIT] ctrl=${(_masterController.value * 100).toStringAsFixed(1)}%'
-          '  card=$i  rev=$reverseIndex'
-          '  cardExitCtrl=${(cardExitCtrl * 100).toStringAsFixed(1)}%'
-          '  fanT=${fanT.toStringAsFixed(3)}'
-          '  cardSize=${cardSize.toStringAsFixed(1)}'
-          '  exitX=${exitX.toStringAsFixed(1)}'
-          '  finalSlotX=${finalSlotX.toStringAsFixed(1)}'
-          '  currentX=${currentX.toStringAsFixed(1)}'
-          '  rightEdge=${(currentX + cardSize).toStringAsFixed(1)}'
-          '  gap_to_prev=${i > 0 ? "check_next_card" : "LEAD"}',
-    );
+    // ── STEP 5: Final Layout Snap (Apply Target Spacing) ──
+    if (_masterController.isCompleted || _isAnimationComplete) {
+      cardSize = exitImageSize;
+      final double finalSlotX = exitX + (_labels.length - 1 - i) * (exitImageSize + _targetSpacing);
+      currentX = finalSlotX;
+    }
 
     return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
-  }
-
-  int _logFrameCount = 0;
-
-  void _logCardGaps(double diagLen, double screenW) {
-    _logFrameCount++;
-    if (_logFrameCount % 10 != 0) return;
-
-    final results = List.generate(_labels.length, (i) => _cardState(i, diagLen, screenW));
-
-    final double r       = _nRadius * diagLen;
-    final double centreX = _nCentreX * diagLen;
-    final double exitX   = centreX + r * math.cos(_angEntry + _sweepCW);
-
-    final anyOnExit = results.any((r) => r.x >= exitX - 5);
-    if (!anyOnExit) return;
-
-    debugPrint('═══ GAPS @ ctrl=${(_masterController.value * 100).toStringAsFixed(1)}% ═══');
-    for (int i = 0; i < results.length - 1; i++) {
-      final curr = results[i];
-      final next = results[i + 1];
-      final gap = curr.x - (next.x + next.size);
-      debugPrint(
-        '  card[$i]←→card[${i+1}]'
-            '  [$i].x=${curr.x.toStringAsFixed(1)}'
-            '  [${i+1}].right=${(next.x + next.size).toStringAsFixed(1)}'
-            '  GAP=${gap.toStringAsFixed(1)}px'
-            '  ${gap.abs() < 2 ? "✓" : gap > 2 ? "⚠GAP" : "⚠OVERLAP"}',
-      );
-    }
   }
 
   @override
@@ -460,25 +380,25 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
                 child: AnimatedBuilder(
                     animation: _masterController,
                     builder: (context, _) {
-                      _logCardGaps(diagLen, screenW);
-                      return
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            SizedBox(width: totalContentWidth, height: screenH),
-                            ...List.generate(_labels.length, (i) => _labels.length - 1 - i).map((i) {
-                              final state = _cardState(i, diagLen, screenW);
-                              return Positioned(
-                                left: startLeft + state.x,
-                                top: startTop + state.y,
-                                child: Opacity(
-                                  opacity: state.opacity,
+                      return Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          SizedBox(width: totalContentWidth, height: screenH),
+                          ...List.generate(_labels.length, (i) => _labels.length - 1 - i).map((i) {
+                            final state = _cardState(i, diagLen, screenW);
+                            return Positioned(
+                              left: startLeft + state.x,
+                              top: startTop + state.y,
+                              child: Opacity(
+                                opacity: state.opacity,
+                                child: RepaintBoundary(
                                   child: _buildCard(i, size: state.size),
                                 ),
-                              );
-                            }),
-                          ],
-                        );
+                              ),
+                            );
+                          }),
+                        ],
+                      );
                     }
                 ),
               ),
