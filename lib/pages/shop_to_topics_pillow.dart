@@ -284,70 +284,63 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
 
-    // ── STEP 1: Calculate Master Front-Runner Progress ──
-    // The lead position shifts smoothly across the total path window
-    final double absoluteMaxDistance = loopDist + (_labels.length * exitImageSize);
-    final double masterLeadDist = _masterController.value * absoluteMaxDistance;
+    // ── STEP 1: Time-Based Progress Distribution ──
+    // Introduce a uniform fractional lag per card based on its index.
+    // 0.045 provides a tight, natural trailing flow behind the leader.
+    const double cardTimelineLag = 0.045;
+    double cardProgress = _masterController.value - (i * cardTimelineLag);
+    cardProgress = cardProgress.clamp(0.0, 1.0);
 
-    // ── STEP 2: Dynamically Calculate This Individual Card's Distance ──
-    // Instead of a fixed lag, we look at how far the card is, determine its size at that spot,
-    // and stack them perfectly back-to-back using accumulated real-time widths.
-    double currentTravelDist = masterLeadDist;
-    double cardSize = imageSize;
+    // ── STEP 2: Map Normalized Progress to Total Travel Distance ──
+    final double totalSpacingOffset = (_labels.length - 1) * _targetSpacing;
+    final double absoluteMaxDistance = loopDist + (_labels.length * exitImageSize) + totalSpacingOffset;
 
-    for (int j = 0; j < i; j++) {
-      // Estimate the size of the preceding card to know how much distance to subtract
-      double approxPrecedingDist = currentTravelDist - (imageSize * 0.5);
-      double precedingSize = imageSize;
-
-      if (approxPrecedingDist > dist1 && approxPrecedingDist < loopDist) {
-        final double arcProgress = ((approxPrecedingDist - dist1) / dist2).clamp(0.0, 1.0);
-        precedingSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
-      } else if (approxPrecedingDist >= loopDist) {
-        precedingSize = exitImageSize;
-      }
-
-      // Push this card back by exactly the width of the card ahead of it
-      currentTravelDist -= precedingSize;
-    }
+    // Calculate this card's fluid distance along the track
+    double currentTravelDist = cardProgress * absoluteMaxDistance;
 
     double currentX = 0.0;
     double currentY = 0.0;
+    double cardSize = imageSize;
 
-    // ── STEP 3: Map Distance to Coordinates ──
+    // ── STEP 3: Map Distance to Screen Coordinates ──
     if (currentTravelDist < loopDist) {
+      // ── ON THE CURVED PATH: Continuous mathematical upscale ──
       double pathDist = currentTravelDist;
-      if (pathDist < 0) pathDist = 0; // Hold behind the entry gate until pulled in
+      if (pathDist < 0) pathDist = 0;
 
       final Offset point = _getPointOnPath(pathDist, diagLen);
       currentX = point.dx;
       currentY = point.dy;
 
-      // Update current card size based on its exact arc progress coordinate
       if (pathDist > dist1) {
         final double arcProgress = ((pathDist - dist1) / dist2).clamp(0.0, 1.0);
         cardSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
       }
     } else {
-      // ── STEP 4: Flat Exit Line (Marching Train) ──
-      final double lineExtScroll = currentTravelDist - loopDist;
-      final double trainOffset = (_labels.length - 1 - i) * exitImageSize;
-
-      currentX = exitX + lineExtScroll;
-      currentY = exitY;
+      // ── BEYOND THE LOOP: Smooth straightaway rollout ──
       cardSize = exitImageSize;
+      currentY = exitY;
 
-      // Clamp them precisely into their final packed train slots
-      if (currentX > exitX + trainOffset) {
-        currentX = exitX + trainOffset;
+      final double lineExtScroll = currentTravelDist - loopDist;
+      final int reverseIdx = _labels.length - 1 - i;
+
+      // Calculate final rest position with target spacing
+      final double finalRestX = exitX + (reverseIdx * (exitImageSize + _targetSpacing));
+      final double movingX = exitX + lineExtScroll;
+
+      // Perfectly clamp into position without snapping artifacts
+      if (movingX >= finalRestX) {
+        currentX = finalRestX;
+      } else {
+        currentX = movingX;
       }
     }
 
-    // ── STEP 5: Final Layout Snap (Apply Target Spacing) ──
+    // ── STEP 4: Final Layout Safety Snap ──
     if (_masterController.isCompleted || _isAnimationComplete) {
       cardSize = exitImageSize;
-      final double finalSlotX = exitX + (_labels.length - 1 - i) * (exitImageSize + _targetSpacing);
-      currentX = finalSlotX;
+      currentX = exitX + (_labels.length - 1 - i) * (exitImageSize + _targetSpacing);
+      currentY = exitY;
     }
 
     return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
