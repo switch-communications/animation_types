@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:animation_types/widget/physics_controllers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 double _smootherstep(double t) {
   t = t.clamp(0.0, 1.0);
@@ -201,6 +202,13 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   static const double imageSize     = 80.0;
   static const double exitImageSize = 200.0;
 
+  // Fraction of the controller's range dedicated to "drop + arc".
+  // The remainder is dedicated to the exit/train formation.
+  double _pathPhaseRatio = 0.5;
+
+  // Real-time duration (ms) for the train to form & settle after exit.
+  static const int _exitMs = 1400;
+
   bool _isAnimationComplete = false;
 
   static const double _nEntryX  = -0.2230;
@@ -229,10 +237,14 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 2.8).toInt();
+    final int dropArcMs = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
+    final int totalMs   = dropArcMs + _exitMs;
+
+    _pathPhaseRatio = dropArcMs / totalMs;
+
     _masterController = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: pathMs),
+      duration: Duration(milliseconds: totalMs),
     );
   }
 
@@ -244,12 +256,26 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
   Future<void> _playAnimation() async {
     _resetAnimation();
+
+    // Drive the controller with a spring simulation built from the
+    // motion-profile sliders, so mass/stiffness/damping actually affect
+    // the feel of the animation (not just its total duration).
+    final SpringDescription spring = SpringDescription(
+      mass: _profile.mass,
+      stiffness: _profile.stiffness,
+      // Fold "drag" into damping: higher drag => more damped (less bounce).
+      damping: _profile.damping * (1.0 + _profile.drag),
+    );
+
+    final SpringSimulation simulation = SpringSimulation(spring, 0.0, 1.0, 0.0);
+
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         setState(() => _isAnimationComplete = true);
       }
     });
-    _masterController.forward();
+
+    _masterController.animateWith(simulation);
   }
 
   void _resetAnimation() {
@@ -291,27 +317,25 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
     // 1. Total Animation Run-Out Distance
     final double totalSpacingOffset = (_labels.length - 1) * _targetSpacing;
-    final double absoluteMaxDistance = loopDist + (_labels.length * exitImageSize) + totalSpacingOffset;
-    final double masterLeadDist = _masterController.value * absoluteMaxDistance;
+    // After — spacing is now baked into _solveCardDistance, so only add it once for the lead card's travel room:
+    final double absoluteMaxDistance = loopDist + (_labels.length * (exitImageSize + _targetSpacing));
+
+    // ── Two-phase progress mapping ──────────────────────────────────────
+    // [0, _pathPhaseRatio]   -> drop+arc  -> distance [0, loopDist]
+    // [_pathPhaseRatio, 1.0] -> exit/train -> distance [loopDist, absoluteMaxDistance]
+    final double ctrl = _masterController.value.clamp(0.0, 1.0);
+    final double loopFrac = (loopDist / absoluteMaxDistance).clamp(0.0, 1.0);
+
+    double progress = _smoothProgress(ctrl, _pathPhaseRatio, loopFrac);
+
+    final double masterLeadDist = progress.clamp(0.0, 1.0) * absoluteMaxDistance;
 
     // 2. Compute Precise Lag based on full structural sizes
     List<double> cardDistances = List.filled(_labels.length, 0.0);
     cardDistances[0] = masterLeadDist;
 
     for (int j = 1; j < _labels.length; j++) {
-      double prevDistance = cardDistances[j - 1];
-
-      // Look ahead to calculate exactly how large this trailing card is
-      double approxDist = prevDistance - exitImageSize;
-      double sizeAtApprox = imageSize;
-      if (approxDist > dist1 && approxDist < loopDist) {
-        final double arcProgress = ((approxDist - dist1) / dist2).clamp(0.0, 1.0);
-        sizeAtApprox = imageSize + (exitImageSize - imageSize) * arcProgress;
-      } else if (approxDist >= loopDist) {
-        sizeAtApprox = exitImageSize;
-      }
-
-      cardDistances[j] = prevDistance - sizeAtApprox;
+      cardDistances[j] = _solveCardDistance(cardDistances[j - 1], dist1, dist2, loopDist);
     }
 
     double currentTravelDist = cardDistances[i];
@@ -321,7 +345,6 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
     // 3. Map Distance to Coordinates with a smooth exit bridge
     if (currentTravelDist < loopDist) {
-      // ON THE PATH
       double pathDist = currentTravelDist;
       if (pathDist < 0) pathDist = 0;
 
@@ -329,11 +352,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       currentX = point.dx;
       currentY = point.dy;
 
-      if (pathDist > dist1) {
-        // Linear scale normalized precisely to 1.0 at loop exit point
-        final double arcProgress = ((pathDist - dist1) / dist2).clamp(0.0, 1.0);
-        cardSize = imageSize + (exitImageSize - imageSize) * arcProgress;
-      }
+      cardSize = _sizeAtDistance(pathDist, dist1, dist2, loopDist);
     } else {
       // BEYOND THE LOOP
       cardSize = exitImageSize;
@@ -362,6 +381,55 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     }
 
     return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
+  }
+
+  double _smoothProgress(double ctrl, double pathPhaseRatio, double loopFrac) {
+    final double s1 = loopFrac / pathPhaseRatio;
+    final double s2 = (1.0 - loopFrac) / (1.0 - pathPhaseRatio);
+
+    // Use the smaller slope as the shared knot tangent. This guarantees
+    // monotonicity on both Hermite segments (Fritsch-Carlson condition:
+    // knotSlope/secantSlope <= 3 for both segments), eliminating any
+    // overshoot/backtrack at the circle-exit transition.
+    final double knotSlope = math.min(s1, s2);
+
+    double h00(double t) => 2 * t * t * t - 3 * t * t + 1;
+    double h10(double t) => t * t * t - 2 * t * t + t;
+    double h01(double t) => -2 * t * t * t + 3 * t * t;
+    double h11(double t) => t * t * t - t * t;
+
+    if (ctrl <= pathPhaseRatio) {
+      final double dx = pathPhaseRatio;
+      final double t = ctrl / dx;
+      return h00(t) * 0.0 + h10(t) * s1 * dx + h01(t) * loopFrac + h11(t) * knotSlope * dx;
+    } else {
+      final double dx = 1.0 - pathPhaseRatio;
+      final double t = (ctrl - pathPhaseRatio) / dx;
+      return h00(t) * loopFrac + h10(t) * knotSlope * dx + h01(t) * 1.0 + h11(t) * s2 * dx;
+    }
+  }
+
+  double _sizeAtDistance(double d, double dist1, double dist2, double loopDist) {
+    if (d <= dist1) return imageSize;
+    if (d < loopDist) {
+      final double arcProgress = ((d - dist1) / dist2).clamp(0.0, 1.0);
+      return imageSize + (exitImageSize - imageSize) * arcProgress;
+    }
+    return exitImageSize;
+  }
+
+  double _solveCardDistance(double prevDistance, double dist1, double dist2, double loopDist) {
+    // Motion gap: present during travel, vanishes as animation completes
+    final double motionGap = _isAnimationComplete ? 0.0 : (_overshootPx * 0.5).clamp(2.0, 12.0);
+
+    double d = prevDistance - exitImageSize - motionGap;
+    if (d >= loopDist) return d;
+
+    double d2 = prevDistance - imageSize;
+    if (d2 <= dist1) return d2;
+
+    final double k = (exitImageSize - imageSize) / dist2;
+    return (prevDistance - imageSize + k * dist1) / (1 + k);
   }
 
   @override
