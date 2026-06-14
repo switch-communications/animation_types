@@ -370,26 +370,20 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    // EXIT LINE — logs added here
-    // ══════════════════════════════════════════════════════════════════════
+// ── Sequential exit ────────────────────────────────────────────────────
+    final double cardExitCtrl = ((loopDist + i * imageSize) / absoluteMaxDistance) * _pathPhase;
 
-    // When did THIS card cross loopDist?
-    // masterDistance = loopDist + i*imageSize
-    // => pathProgress * absoluteMaxDistance = loopDist + i*imageSize
-    // => pathProgress = (loopDist + i*imageSize) / absoluteMaxDistance
-    // => masterCtrl   = pathProgress * _pathPhase
-    final double cardExitCtrl    = ((loopDist + i * imageSize) / absoluteMaxDistance) * _pathPhase;
     final double remainingWindow = 1.0 - cardExitCtrl;
-    final double fanT            = remainingWindow > 0
+    final double fanT = remainingWindow > 0
         ? ((_masterController.value - cardExitCtrl) / remainingWindow).clamp(0.0, 1.0)
         : 1.0;
 
     final double rawT     = 0.90 + 0.10 * fanT;
     final double cardSize = imageSize + (exitImageSize - imageSize) * rawT;
 
-    final double finalSlotX = exitX + reverseIndex * cardSize;
-    currentX = exitX + (finalSlotX - exitX) * fanT;
+// Use fixed exitImageSize for slot calculation so positions don't shift as cards grow
+    final double finalSlotX = exitX + (_labels.length - 1 - i) * exitImageSize;
+    currentX = exitX + (finalSlotX - exitX) * _easeOutBack(fanT, overshoot: 0.10);
     currentY = exitY;
 
     // ── LOG every card every frame on exit line ──────────────────────────
@@ -472,7 +466,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
                           clipBehavior: Clip.none,
                           children: [
                             SizedBox(width: totalContentWidth, height: screenH),
-                            ...List.generate(_labels.length, (i) {
+                            ...List.generate(_labels.length, (i) => _labels.length - 1 - i).map((i) {
                               final state = _cardState(i, diagLen, screenW);
                               return Positioned(
                                 left: startLeft + state.x,
