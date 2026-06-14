@@ -284,33 +284,29 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
 
-    // ── STEP 1: Total Animation Run-Out Distance ──
+    // 1. Total Animation Run-Out Distance
     final double totalSpacingOffset = (_labels.length - 1) * _targetSpacing;
     final double absoluteMaxDistance = loopDist + (_labels.length * exitImageSize) + totalSpacingOffset;
     final double masterLeadDist = _masterController.value * absoluteMaxDistance;
 
-    // ── STEP 2: Compute Continuous Dynamic Lag ──
+    // 2. Compute Precise Lag based on full structural sizes
     List<double> cardDistances = List.filled(_labels.length, 0.0);
     cardDistances[0] = masterLeadDist;
 
     for (int j = 1; j < _labels.length; j++) {
       double prevDistance = cardDistances[j - 1];
 
-      // Calculate a tentative position for the current card to estimate its size
-      double estimatedCurrentDistance = prevDistance - exitImageSize;
-      if (estimatedCurrentDistance < 0) estimatedCurrentDistance = 0;
-
-      // Determine the size of the current card at its estimated location
-      double currentCardSize = imageSize;
-      if (estimatedCurrentDistance > dist1 && estimatedCurrentDistance < loopDist) {
-        final double arcProgress = ((estimatedCurrentDistance - dist1) / dist2).clamp(0.0, 1.0);
-        currentCardSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
-      } else if (estimatedCurrentDistance >= loopDist) {
-        currentCardSize = exitImageSize;
+      // Look ahead to calculate exactly how large this trailing card is
+      double approxDist = prevDistance - exitImageSize;
+      double sizeAtApprox = imageSize;
+      if (approxDist > dist1 && approxDist < loopDist) {
+        final double arcProgress = ((approxDist - dist1) / dist2).clamp(0.0, 1.0);
+        sizeAtApprox = imageSize + (exitImageSize - imageSize) * arcProgress;
+      } else if (approxDist >= loopDist) {
+        sizeAtApprox = exitImageSize;
       }
 
-      // Lock the card distance precisely flush against the one in front of it
-      cardDistances[j] = prevDistance - currentCardSize;
+      cardDistances[j] = prevDistance - sizeAtApprox;
     }
 
     double currentTravelDist = cardDistances[i];
@@ -318,9 +314,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     double currentX = 0.0;
     double currentY = 0.0;
 
-    // ── STEP 3: Map Distance to Screen Coordinates ──
+    // 3. Map Distance to Coordinates with a smooth exit bridge
     if (currentTravelDist < loopDist) {
-      // ── ON THE PATH: Keep cards seamlessly touching ──
+      // ON THE PATH
       double pathDist = currentTravelDist;
       if (pathDist < 0) pathDist = 0;
 
@@ -329,20 +325,23 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       currentY = point.dy;
 
       if (pathDist > dist1) {
+        // Linear scale normalized precisely to 1.0 at loop exit point
         final double arcProgress = ((pathDist - dist1) / dist2).clamp(0.0, 1.0);
-        cardSize = imageSize + (exitImageSize - imageSize) * (arcProgress * 0.90);
+        cardSize = imageSize + (exitImageSize - imageSize) * arcProgress;
       }
     } else {
-      // ── BEYOND THE LOOP: Transition seamlessly into target spacing ──
+      // BEYOND THE LOOP
       cardSize = exitImageSize;
       currentY = exitY;
 
       final double lineExtScroll = currentTravelDist - loopDist;
       final int reverseIdx = _labels.length - 1 - i;
 
+      // Destination resting point for this specific card index
       final double finalRestX = exitX + (reverseIdx * (exitImageSize + _targetSpacing));
       final double movingX = exitX + lineExtScroll;
 
+      // Smooth interpolation at the junction boundary to avoid snap-glitches
       if (movingX >= finalRestX) {
         currentX = finalRestX;
       } else {
@@ -350,7 +349,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       }
     }
 
-    // ── STEP 4: Final Safety Clamp ──
+    // 4. Global Animation Completion Safety Override
     if (_masterController.isCompleted || _isAnimationComplete) {
       cardSize = exitImageSize;
       currentX = exitX + (_labels.length - 1 - i) * (exitImageSize + _targetSpacing);
