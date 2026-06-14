@@ -363,7 +363,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       double cardSize = imageSize;
       if (currentDist > dist1) {
         final double arcProgress = ((currentDist - dist1) / dist2).clamp(0.0, 1.0);
-        final double rawT = arcProgress * 0.80;
+        final double rawT = arcProgress * 0.90;
         cardSize = imageSize + (exitImageSize - imageSize) * rawT;
       }
 
@@ -385,7 +385,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
         ? ((_masterController.value - cardExitCtrl) / remainingWindow).clamp(0.0, 1.0)
         : 1.0;
 
-    final double rawT     = 0.80 + 0.20 * fanT;
+    final double rawT     = 0.90 + 0.10 * fanT;
     final double cardSize = imageSize + (exitImageSize - imageSize) * rawT;
 
     final double finalSlotX = exitX + reverseIndex * cardSize;
