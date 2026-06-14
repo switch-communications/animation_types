@@ -224,7 +224,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 1.5).toInt();
+    final int pathMs = (_profile.dynamicDuration.inMilliseconds * 2.8).toInt();
     _masterController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: pathMs),
