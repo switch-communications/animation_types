@@ -2,6 +2,11 @@ import 'dart:math' as math;
 import 'package:animation_types/widget/physics_controllers.dart';
 import 'package:flutter/material.dart';
 
+double _smootherstep(double t) {
+  t = t.clamp(0.0, 1.0);
+  return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
 class _ControlsData {
   double mass, stiffness, damping, drag;
   double separationForce, separationSpring;
