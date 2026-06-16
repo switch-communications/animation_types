@@ -226,7 +226,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   double _pathPhaseEnd = 0.60; // recomputed in _buildController
   static const double _spacingOverlap = 0.08;
   static const double _peakAt         = 0.55; // peak early → snappy overshoot, longer pull-back
-  static const int    _spacingMs      = 500;  // shorter = faster fan-out
+  static const int    _spacingMs      = 650;  // time budget for the final-10% fan-out
 
   bool _isAnimationComplete = false;
 
@@ -279,11 +279,13 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       (_masterController.value / _pathPhaseEnd).clamp(0.0, 1.0);
 
   /// 0..1 progress for the spacing / elastic phase.
-  /// Starts slightly before the path phase ends (_spacingOverlap).
-  double get _spacingProgress {
-    final double start = _pathPhaseEnd - _spacingOverlap;
-    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
-  }
+  /// Starts at exactly 90% of the master controller so the fan-out +
+  /// overshoot only kicks in during the final 10% of the animation.
+  static const double _spacingStartAt = 0.80;
+
+  double get _spacingProgress =>
+      ((_masterController.value - _spacingStartAt) / (1.0 - _spacingStartAt))
+          .clamp(0.0, 1.0);
 
   // ── Animation lifecycle ────────────────────────────────────────────────
 
