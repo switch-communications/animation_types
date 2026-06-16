@@ -1,13 +1,14 @@
 import 'dart:math' as math;
 import 'package:animation_types/widget/physics_controllers.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
+
 
 double _smootherstep(double t) {
   t = t.clamp(0.0, 1.0);
   return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
+// ─── Controls data bag ─────────────────────────────────────────────────────
 class _ControlsData {
   double mass, stiffness, damping, drag;
   double separationForce, separationSpring;
@@ -29,6 +30,7 @@ class _ControlsData {
   });
 }
 
+// ─── Bottom sheet ──────────────────────────────────────────────────────────
 class _ControlsSheet extends StatefulWidget {
   final double mass, stiffness, damping, drag;
   final double separationForce, separationSpring;
@@ -94,7 +96,8 @@ class _ControlsSheetState extends State<_ControlsSheet> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              Text(value.toStringAsFixed(2), style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+              Text(value.toStringAsFixed(2),
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
             ],
           ),
           SliderTheme(
@@ -124,7 +127,12 @@ class _ControlsSheetState extends State<_ControlsSheet> {
 
   Widget _sectionTitle(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-    child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF6C63FF), letterSpacing: 1.1)),
+    child: Text(title,
+        style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF6C63FF),
+            letterSpacing: 1.1)),
   );
 
   @override
@@ -146,12 +154,15 @@ class _ControlsSheetState extends State<_ControlsSheet> {
               child: Container(
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2)),
               ),
             ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Animation Controls', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              child: Text('Animation Controls',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
             ),
             const Divider(height: 1),
             Expanded(
@@ -180,6 +191,7 @@ class _ControlsSheetState extends State<_ControlsSheet> {
   }
 }
 
+// ─── Main widget ───────────────────────────────────────────────────────────
 class ShopToTopicsPillow extends StatefulWidget {
   const ShopToTopicsPillow({super.key});
 
@@ -202,12 +214,19 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   static const double imageSize     = 80.0;
   static const double exitImageSize = 200.0;
 
-  // Fraction of the controller's range dedicated to "drop + arc".
-  // The remainder is dedicated to the exit/train formation.
-  double _pathPhaseRatio = 0.5;
+  // ── Timeline fractions (all within 0..1 of _masterController) ─────────
+  //
+  // [0 ──── _pathPhaseEnd] : drop + arc travel
+  // [_exitStart ─── _peakAt] : cards fan out to (targetSpacing + overshoot)
+  // [_peakAt ──────── 1.0]  : pull back to targetSpacing  ← elastic feel
+  //
+  // _spacingOverlap: spacing starts slightly before path ends so the
+  // fan-out feels connected to the arc exit, not delayed after it.
 
-  // Real-time duration (ms) for the train to form & settle after exit.
-  static const int _exitMs = 1400;
+  double _pathPhaseEnd = 0.60; // recomputed in _buildController
+  static const double _spacingOverlap = 0.08;
+  static const double _peakAt         = 0.55; // peak early → snappy overshoot, longer pull-back
+  static const int    _spacingMs      = 500;  // shorter = faster fan-out
 
   bool _isAnimationComplete = false;
 
@@ -237,10 +256,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
   }
 
   void _buildController() {
-    final int dropArcMs = (_profile.dynamicDuration.inMilliseconds * 1.8).toInt();
-    final int totalMs   = dropArcMs + _exitMs;
-
-    _pathPhaseRatio = dropArcMs / totalMs;
+    final int dropArcMs = (_profile.dynamicDuration.inMilliseconds * 2.8).toInt();
+    final int totalMs   = dropArcMs + _spacingMs;
+    _pathPhaseEnd = dropArcMs / totalMs;
 
     _masterController = AnimationController(
       vsync: this,
@@ -254,20 +272,23 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     setState(() {});
   }
 
+  // ── Progress helpers (mirrors ShopPillowCircleRound pattern) ──────────
+
+  /// 0..1 progress that only covers the drop+arc phase.
+  double get _pathProgress =>
+      (_masterController.value / _pathPhaseEnd).clamp(0.0, 1.0);
+
+  /// 0..1 progress for the spacing / elastic phase.
+  /// Starts slightly before the path phase ends (_spacingOverlap).
+  double get _spacingProgress {
+    final double start = _pathPhaseEnd - _spacingOverlap;
+    return ((_masterController.value - start) / (1.0 - start)).clamp(0.0, 1.0);
+  }
+
+  // ── Animation lifecycle ────────────────────────────────────────────────
+
   Future<void> _playAnimation() async {
     _resetAnimation();
-
-    // Drive the controller with a spring simulation built from the
-    // motion-profile sliders, so mass/stiffness/damping actually affect
-    // the feel of the animation (not just its total duration).
-    final SpringDescription spring = SpringDescription(
-      mass: _profile.mass,
-      stiffness: _profile.stiffness,
-      // Fold "drag" into damping: higher drag => more damped (less bounce).
-      damping: _profile.damping * (1.0 + _profile.drag),
-    );
-
-    final SpringSimulation simulation = SpringSimulation(spring, 0.0, 1.0, 0.0);
 
     _masterController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
@@ -275,13 +296,18 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       }
     });
 
-    _masterController.animateWith(simulation);
+    // forward() respects the controller duration so speed is predictable.
+    // mass/stiffness/damping shape the drop+arc easing curve via
+    // _pathProgress, not the overall playback rate.
+    _masterController.forward();
   }
 
   void _resetAnimation() {
     _masterController.reset();
     setState(() => _isAnimationComplete = false);
   }
+
+  // ── Path geometry ──────────────────────────────────────────────────────
 
   Offset _getPointOnPath(double d, double diagLen) {
     final double r         = _nRadius  * diagLen;
@@ -302,7 +328,8 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     }
   }
 
-  ({double x, double y, double opacity, double size}) _cardState(int i, double diagLen, double screenW) {
+  ({double x, double y, double opacity, double size}) _cardState(
+      int i, double diagLen, double screenW) {
     final double r         = _nRadius  * diagLen;
     final double centreX   = _nCentreX * diagLen;
     final double centreY   = _nCentreY * diagLen;
@@ -315,82 +342,73 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double dist2     = r * _sweepCW;
     final double loopDist  = dist1 + dist2;
 
-    // 1. Total Animation Run-Out Distance
-    final double totalSpacingOffset = (_labels.length - 1) * _targetSpacing;
-    // After — spacing is now baked into _solveCardDistance, so only add it once for the lead card's travel room:
-    final double absoluteMaxDistance = loopDist + (_labels.length * (exitImageSize + _targetSpacing));
+    // Max distance — cards pack tightly first, spacing is added separately below
+    final double absoluteMaxDistance =
+        loopDist + (_labels.length * exitImageSize);
 
-    // ── Two-phase progress mapping ──────────────────────────────────────
-    // [0, _pathPhaseRatio]   -> drop+arc  -> distance [0, loopDist]
-    // [_pathPhaseRatio, 1.0] -> exit/train -> distance [loopDist, absoluteMaxDistance]
-    final double ctrl = _masterController.value.clamp(0.0, 1.0);
-    final double loopFrac = (loopDist / absoluteMaxDistance).clamp(0.0, 1.0);
+    // ── 1. Path phase: where is this card along the arc? ─────────────────
+    final double masterLeadDist = _pathProgress * absoluteMaxDistance;
 
-    double progress = _smoothProgress(ctrl, _pathPhaseRatio, loopFrac);
-
-    final double masterLeadDist = progress.clamp(0.0, 1.0) * absoluteMaxDistance;
-
-    // 2. Compute Precise Lag based on full structural sizes
-    List<double> cardDistances = List.filled(_labels.length, 0.0);
+    final List<double> cardDistances = List.filled(_labels.length, 0.0);
     cardDistances[0] = masterLeadDist;
-
     for (int j = 1; j < _labels.length; j++) {
-      cardDistances[j] = _solveCardDistance(cardDistances[j - 1], dist1, dist2, loopDist);
+      cardDistances[j] =
+          _solveCardDistance(cardDistances[j - 1], dist1, dist2, loopDist);
     }
 
     double currentTravelDist = cardDistances[i];
-    double cardSize = imageSize;
-    double currentX = 0.0;
-    double currentY = 0.0;
+    double cardSize  = imageSize;
+    double currentX  = 0.0;
+    double currentY  = 0.0;
 
-    // 3. Map Distance to Coordinates with a smooth exit bridge
     if (currentTravelDist < loopDist) {
-      double pathDist = currentTravelDist;
-      if (pathDist < 0) pathDist = 0;
-
-      final Offset point = _getPointOnPath(pathDist, diagLen);
+      final double pathDist = currentTravelDist.clamp(0.0, double.infinity);
+      final Offset point    = _getPointOnPath(pathDist, diagLen);
       currentX = point.dx;
       currentY = point.dy;
-
       cardSize = _sizeAtDistance(pathDist, dist1, dist2, loopDist);
     } else {
-      // BEYOND THE LOOP
       cardSize = exitImageSize;
       currentY = exitY;
 
-      final double lineExtScroll = currentTravelDist - loopDist;
-      final int reverseIdx = _labels.length - 1 - i;
-
-      // Destination resting point for this specific card index
-      final double finalRestX = exitX + (reverseIdx * (exitImageSize + _targetSpacing));
-      final double movingX = exitX + lineExtScroll;
-
-      // Smooth interpolation at the junction boundary to avoid snap-glitches
-      if (movingX >= finalRestX) {
-        currentX = finalRestX;
-      } else {
-        currentX = movingX;
-      }
+      // Pack tightly on exit line — spacing drift is applied separately
+      final double lineExt    = currentTravelDist - loopDist;
+      final int    reverseIdx = _labels.length - 1 - i;
+      final double packedRest = exitX + (reverseIdx * exitImageSize);
+      final double movingX    = exitX + lineExt;
+      currentX = math.min(movingX, packedRest);
     }
 
-    // 4. Global Animation Completion Safety Override
-    if (_masterController.isCompleted || _isAnimationComplete) {
-      cardSize = exitImageSize;
-      currentX = exitX + (_labels.length - 1 - i) * (exitImageSize + _targetSpacing);
-      currentY = exitY;
+    // ── 2. Spacing phase: elastic fan-out matching ShopPillowCircleRound ─
+    //
+    // Per-card stagger: card i starts its spacing animation slightly later,
+    // giving a cascading wave feel (same as the reference widget).
+    final int    reverseIndex     = _labels.length - 1 - i;
+    final double cardStaggerStart = i * 0.01;
+    final double normProgress     =
+    ((_spacingProgress - cardStaggerStart) / (1.0 - cardStaggerStart))
+        .clamp(0.0, 1.0);
+
+    double spacingAtThisFrame;
+    if (normProgress <= _peakAt) {
+      // Rise: 0 → targetSpacing + overshootPx
+      final double t = _smootherstep(normProgress / _peakAt);
+      spacingAtThisFrame = (_targetSpacing + _overshootPx) * t;
+    } else {
+      // Pull-back: targetSpacing + overshootPx → targetSpacing
+      final double t = _smootherstep((normProgress - _peakAt) / (1.0 - _peakAt));
+      spacingAtThisFrame = (_targetSpacing + _overshootPx) - (_overshootPx * t);
     }
+
+    // Apply drift based on this card's position in the train
+    currentX += reverseIndex * spacingAtThisFrame;
 
     return (x: currentX, y: currentY, opacity: 1.0, size: cardSize);
   }
 
   double _smoothProgress(double ctrl, double pathPhaseRatio, double loopFrac) {
-    final double s1 = loopFrac / pathPhaseRatio;
-    final double s2 = (1.0 - loopFrac) / (1.0 - pathPhaseRatio);
-
-    // Use the smaller slope as the shared knot tangent. This guarantees
-    // monotonicity on both Hermite segments (Fritsch-Carlson condition:
-    // knotSlope/secantSlope <= 3 for both segments), eliminating any
-    // overshoot/backtrack at the circle-exit transition.
+    final double s1        = loopFrac / pathPhaseRatio;
+    final double s2        = (1.0 - loopFrac) / (1.0 - pathPhaseRatio);
     final double knotSlope = math.min(s1, s2);
 
     double h00(double t) => 2 * t * t * t - 3 * t * t + 1;
@@ -400,11 +418,11 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
     if (ctrl <= pathPhaseRatio) {
       final double dx = pathPhaseRatio;
-      final double t = ctrl / dx;
+      final double t  = ctrl / dx;
       return h00(t) * 0.0 + h10(t) * s1 * dx + h01(t) * loopFrac + h11(t) * knotSlope * dx;
     } else {
       final double dx = 1.0 - pathPhaseRatio;
-      final double t = (ctrl - pathPhaseRatio) / dx;
+      final double t  = (ctrl - pathPhaseRatio) / dx;
       return h00(t) * loopFrac + h10(t) * knotSlope * dx + h01(t) * 1.0 + h11(t) * s2 * dx;
     }
   }
@@ -418,9 +436,11 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     return exitImageSize;
   }
 
-  double _solveCardDistance(double prevDistance, double dist1, double dist2, double loopDist) {
-    // Motion gap: present during travel, vanishes as animation completes
-    final double motionGap = _isAnimationComplete ? 0.0 : (_overshootPx * 0.5).clamp(2.0, 12.0);
+  double _solveCardDistance(
+      double prevDistance, double dist1, double dist2, double loopDist) {
+    // During travel we keep a small motion gap so cards don't visually merge;
+    // once complete they pack tightly (spacing handles the separation).
+    final double motionGap = _isAnimationComplete ? 0.0 : 2.0;
 
     double d = prevDistance - exitImageSize - motionGap;
     if (d >= loopDist) return d;
@@ -432,18 +452,20 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     return (prevDistance - imageSize + k * dist1) / (1 + k);
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
-    final double screenH = MediaQuery.of(context).size.height;
-    final double screenW = MediaQuery.of(context).size.width;
-    final double diagLen = screenH * _dropDistanceFactor + _dropDistance;
+    final double screenH   = MediaQuery.of(context).size.height;
+    final double screenW   = MediaQuery.of(context).size.width;
+    final double diagLen   = screenH * _dropDistanceFactor + _dropDistance;
     final double startLeft = screenW * 0.55;
     const double startTop  = 30.0;
 
-    final double r             = _nRadius * diagLen;
-    final double centreX       = _nCentreX * diagLen;
-    final double exitTheta     = _angEntry + _sweepCW;
-    final double exitX         = centreX + r * math.cos(exitTheta);
+    final double r                 = _nRadius * diagLen;
+    final double centreX           = _nCentreX * diagLen;
+    final double exitTheta         = _angEntry + _sweepCW;
+    final double exitX             = centreX + r * math.cos(exitTheta);
     final double totalCardsWidth   = _labels.length * (exitImageSize + _targetSpacing);
     final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
 
@@ -455,30 +477,30 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
             Expanded(
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics()),
                 child: AnimatedBuilder(
-                    animation: _masterController,
-                    builder: (context, _) {
-                      return Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          SizedBox(width: totalContentWidth, height: screenH),
-                          ...List.generate(_labels.length, (i) => _labels.length - 1 - i).map((i) {
-                            final state = _cardState(i, diagLen, screenW);
-                            return Positioned(
-                              left: startLeft + state.x,
-                              top: startTop + state.y,
-                              child: Opacity(
-                                opacity: state.opacity,
-                                child: RepaintBoundary(
-                                  child: _buildCard(i, size: state.size),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      );
-                    }
+                  animation: _masterController,
+                  builder: (context, _) => Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      SizedBox(width: totalContentWidth, height: screenH),
+                      ...List.generate(_labels.length, (i) => _labels.length - 1 - i)
+                          .map((i) {
+                        final state = _cardState(i, diagLen, screenW);
+                        return Positioned(
+                          left: startLeft + state.x,
+                          top:  startTop  + state.y,
+                          child: Opacity(
+                            opacity: state.opacity,
+                            child: RepaintBoundary(
+                              child: _buildCard(i, size: state.size),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -502,7 +524,8 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 18),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
             ),
-            child: const Text('Animate', style: TextStyle(color: Colors.white, fontSize: 18)),
+            child: const Text('Animate',
+                style: TextStyle(color: Colors.white, fontSize: 18)),
           ),
           const SizedBox(width: 12),
           ElevatedButton(
@@ -561,7 +584,9 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     decoration: BoxDecoration(
       color: Colors.blueAccent,
       borderRadius: BorderRadius.circular(12),
-      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      boxShadow: const [
+        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
+      ],
     ),
     child: ClipRRect(
       borderRadius: BorderRadius.circular(12),
