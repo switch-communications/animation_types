@@ -346,7 +346,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
 
     // Max distance — cards pack tightly first, spacing is added separately below
     final double absoluteMaxDistance =
-        loopDist + (_labels.length * exitImageSize);
+        loopDist + ((_labels.length + 2) * exitImageSize);
 
     // ── 1. Path phase: where is this card along the arc? ─────────────────
     final double masterLeadDist = _pathProgress * absoluteMaxDistance;
@@ -376,7 +376,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
       // Pack tightly on exit line — spacing drift is applied separately
       final double lineExt    = currentTravelDist - loopDist;
       final int    reverseIdx = _labels.length - 1 - i;
-      final double packedRest = exitX + (reverseIdx * exitImageSize);
+      final double packedRest = exitX + screenW*0.35 + (reverseIdx * exitImageSize);
       final double movingX    = exitX + lineExt;
       currentX = math.min(movingX, packedRest);
     }
@@ -461,7 +461,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double screenH   = MediaQuery.of(context).size.height;
     final double screenW   = MediaQuery.of(context).size.width;
     final double diagLen   = screenH * _dropDistanceFactor + _dropDistance;
-    final double startLeft = screenW * 0.55;
+    final double startLeft = screenW * 0.22;
     const double startTop  = 30.0;
 
     final double r                 = _nRadius * diagLen;
@@ -469,7 +469,7 @@ class _ShopToTopicsPillowState extends State<ShopToTopicsPillow>
     final double exitTheta         = _angEntry + _sweepCW;
     final double exitX             = centreX + r * math.cos(exitTheta);
     final double totalCardsWidth   = _labels.length * (exitImageSize + _targetSpacing);
-    final double totalContentWidth = startLeft + exitX + totalCardsWidth + 120.0;
+    final double totalContentWidth = startLeft + exitX + totalCardsWidth + 200.0;
 
     return Scaffold(
       backgroundColor: Colors.white,
