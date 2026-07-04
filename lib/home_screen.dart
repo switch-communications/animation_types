@@ -17,6 +17,7 @@ import 'package:animation_types/pages/physics_tab_example_two.dart';
 import 'package:animation_types/pages/physics_tab_with_sliders.dart';
 import 'package:animation_types/pages/shop_pillow_circel_round.dart';
 import 'package:animation_types/pages/shop_to_topics_pillow.dart';
+import 'package:animation_types/pages/topics_to_story_animation_widget.dart';
 import 'package:flutter/material.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -73,6 +74,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 },
                 child: Text("Shop To Topics Animation"),
+              ),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TopicsToStoryAnimationWidget(),
+                    ),
+                  );
+                },
+                child: Text("Topics To Story"),
               ),
               SizedBox(height: 20),
               ElevatedButton(
