@@ -115,6 +115,7 @@ class _CardState {
   bool   expandComplete    = false;
   double slideBaseOffset   = 0.0;
   double slideTargetOffset = 0.0;
+  Offset lastTravelPos     = Offset.zero; // exact pixel pos when travel ended
 
   void dispose() {
     pathCtrl.dispose();
@@ -131,6 +132,7 @@ class _CardState {
     expandComplete    = false;
     slideBaseOffset   = 0.0;
     slideTargetOffset = 0.0;
+    lastTravelPos     = Offset.zero;
   }
 }
 
@@ -261,7 +263,10 @@ class _TopicsToStoryAnimationWidgetState
   }
 
   void _onTravelDone(int idx) {
-    if (!mounted) return;
+    if (!mounted || _table == null) return;
+    // Capture the exact pixel the card was on — avoids any snap on phase switch
+    final dist = _table!.totalLength;
+    _cards[idx].lastTravelPos = _table!.positionAt(dist);
     setState(() {
       _cards[idx].travelDone = true;
       _cards[idx].expandCtrl.forward();
@@ -378,40 +383,44 @@ class _TopicsToStoryAnimationWidgetState
     final cardW = widget.cardSize.width;
     final cardH = widget.cardSize.height;
 
-    final endPos  = _table!.endPosition;
-    final anchorX = endPos.dx;
-    final anchorY = endPos.dy;
-
-    final slideOffset = lerpDouble(
-        cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
-
-    double left, top, width, height;
-
     if (!cs.travelDone) {
-      // Phase 1 — travel along path, no resize
+      // Phase 1 — travel along path, original card size, no transforms
       final dist = cs.pathCtrl.value * _table!.totalLength;
       final pos  = _table!.positionAt(dist);
-      left   = pos.dx - cardW / 2;
-      top    = pos.dy - cardH / 2;
-      width  = cardW;
-      height = cardH;
+      return Positioned(
+        left:   pos.dx - cardW / 2,
+        top:    pos.dy - cardH / 2,
+        width:  cardW,
+        height: cardH,
+        child:  _cardWidget(index),
+      );
     } else {
-      // Phase 2 — expand downward from anchor
-      // Phase 3 — slide right (slideOffset grows after expansion done)
       final eased = _smootherstep(cs.expandCtrl.value);
-      width  = lerpDouble(cardW, expS, eased)!;
-      height = lerpDouble(cardH, expS, eased)!;
-      top    = anchorY;                    // top is fixed — grows downward
-      left   = anchorX - width / 2 + slideOffset;
-    }
 
-    return Positioned(
-      left:   left,
-      top:    top,
-      width:  width,
-      height: height,
-      child:  _cardWidget(index),
-    );
+      final slideOffset = lerpDouble(
+          cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
+
+      // Use the exact pixel captured at end of travel — no snap
+      final startLeft = cs.lastTravelPos.dx - cardW / 2;
+      final startTop  = cs.lastTravelPos.dy - cardH / 2;
+
+      final startScale = cardW / expS;
+      final scale      = lerpDouble(startScale, 1.0, eased)!;
+
+      return Positioned(
+        left:   startLeft + slideOffset,
+        top:    startTop,
+        width:  expS,
+        height: expS,
+        child: Transform(
+          alignment: Alignment.topLeft,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0008)
+            ..scale(scale, scale, 1.0),
+          child: _cardWidget(index),
+        ),
+      );
+    }
   }
 
   Widget _cardWidget(int index) {
@@ -485,7 +494,7 @@ class _DebugPathPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color       = Colors.red.withOpacity(0.4)
+        ..color       = Colors.red.withOpacity(0.35)
         ..style       = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
