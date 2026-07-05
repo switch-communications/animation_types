@@ -33,7 +33,6 @@ class _WaterfallPath {
     return raw.shift(Offset(dx, 0));
   }
 
-  /// Arc-length from path start to mid of curve 2 — trigger point.
   static double triggerArcLength(Size size) {
     const srcW = 264.0;
     const srcH = 539.0;
@@ -78,9 +77,9 @@ class _ArcLengthTable {
     });
   }
 
-  final int      samples;
-  double         totalLength = 0;
-  List<Offset>   _points     = [];
+  final int    samples;
+  double       totalLength = 0;
+  List<Offset> _points     = [];
 
   Offset positionAt(double distance) {
     final f = (distance.clamp(0, totalLength) / totalLength * samples);
@@ -97,7 +96,7 @@ double _smootherstep(double t) {
 }
 
 // =====================================================================
-// Per-card state  — NO late fields
+// Per-card state
 // =====================================================================
 class _CardState {
   _CardState({
@@ -115,7 +114,7 @@ class _CardState {
   bool   expandComplete    = false;
   double slideBaseOffset   = 0.0;
   double slideTargetOffset = 0.0;
-  Offset lastTravelPos     = Offset.zero; // exact pixel pos when travel ended
+  Offset lastTravelPos     = Offset.zero;
 
   void dispose() {
     pathCtrl.dispose();
@@ -142,7 +141,7 @@ class _CardState {
 class TopicsToStoryAnimationWidget extends StatefulWidget {
   const TopicsToStoryAnimationWidget({
     super.key,
-    this.letters         = const ['A', 'B'],
+    this.letters         = const ['A', 'B', 'C', 'D'],
     this.travelMs        = 2000,
     this.expandMs        = 500,
     this.slideMs         = 400,
@@ -180,24 +179,22 @@ class _TopicsToStoryAnimationWidgetState
     extends State<TopicsToStoryAnimationWidget>
     with TickerProviderStateMixin {
 
-  // ── geometry — all nullable, built lazily ─────────────────────────
   Size?            _areaSize;
   Path?            _path;
   _ArcLengthTable? _table;
   double           _triggerDist = 0;
 
-  // ── slider values — initialised from widget in initState ──────────
   double _areaWidth  = 264;
   double _areaHeight = 539;
 
-  // ── per-card — initialised in initState ───────────────────────────
   List<_CardState> _cards   = [];
   List<bool>       _started = [];
 
   int    get _cardCount => widget.letters.length;
   double get _slideStep => widget.expandedSize + widget.cardGap;
+  bool   get _allSettled =>
+      _cards.isNotEmpty && _cards.every((cs) => cs.expandComplete);
 
-  // ── lifecycle ─────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
@@ -254,6 +251,7 @@ class _TopicsToStoryAnimationWidgetState
   void _onPathTick(int idx) {
     if (!mounted || _table == null) return;
     final cs = _cards[idx];
+    // When this card crosses the mid-point of curve 2, launch the next card
     if (!cs.nextTriggered &&
         cs.pathCtrl.value * _table!.totalLength >= _triggerDist) {
       cs.nextTriggered = true;
@@ -264,9 +262,14 @@ class _TopicsToStoryAnimationWidgetState
 
   void _onTravelDone(int idx) {
     if (!mounted || _table == null) return;
-    // Capture the exact pixel the card was on — avoids any snap on phase switch
-    final dist = _table!.totalLength;
-    _cards[idx].lastTravelPos = _table!.positionAt(dist);
+
+    _cards[idx].lastTravelPos = _table!.positionAt(_table!.totalLength);
+
+    // Slide all already-settled cards before this card expands
+    for (int i = 0; i < idx; i++) {
+      if (_cards[i].expandComplete) _addSlide(i);
+    }
+
     setState(() {
       _cards[idx].travelDone = true;
       _cards[idx].expandCtrl.forward();
@@ -275,17 +278,11 @@ class _TopicsToStoryAnimationWidgetState
 
   void _onExpandDone(int idx) {
     if (!mounted) return;
-    setState(() {
-      _cards[idx].expandComplete = true;
-      // All settled cards (including this one) slide right one step
-      for (int i = 0; i <= idx; i++) {
-        if (_cards[i].expandComplete) _addSlide(i);
-      }
-    });
+    setState(() => _cards[idx].expandComplete = true);
   }
 
   void _addSlide(int idx) {
-    final cs = _cards[idx];
+    final cs      = _cards[idx];
     final current = lerpDouble(
         cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
     cs.slideBaseOffset   = current;
@@ -337,22 +334,24 @@ class _TopicsToStoryAnimationWidgetState
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  // Keep slider values within what the screen can actually show
                   final maxW = constraints.maxWidth;
                   final maxH = constraints.maxHeight;
                   if (_areaWidth  > maxW) WidgetsBinding.instance.addPostFrameCallback((_) => setState(() => _areaWidth  = maxW));
                   if (_areaHeight > maxH) WidgetsBinding.instance.addPostFrameCallback((_) => setState(() => _areaHeight = maxH));
 
+                  // The animation area — shared for both animation and
+                  // scrollable phases so position never jumps.
                   return Center(
                     child: SizedBox(
                       width:  _areaWidth,
                       height: _areaHeight,
                       child: OverflowBox(
-                        // Allow cards to draw beyond the SizedBox without clipping
                         maxWidth:  double.infinity,
                         maxHeight: double.infinity,
                         alignment: Alignment.topLeft,
-                        child: Stack(
+                        child: _allSettled
+                            ? _buildScrollableCards()
+                            : Stack(
                           clipBehavior: Clip.none,
                           children: [
                             if (widget.showDebugPath && _path != null)
@@ -375,6 +374,8 @@ class _TopicsToStoryAnimationWidgetState
     );
   }
 
+  // ── card builders ─────────────────────────────────────────────────
+
   Widget _buildCard(int index) {
     if (!_started[index] || _table == null) return const SizedBox.shrink();
 
@@ -384,7 +385,7 @@ class _TopicsToStoryAnimationWidgetState
     final cardH = widget.cardSize.height;
 
     if (!cs.travelDone) {
-      // Phase 1 — travel along path, original card size, no transforms
+      // Phase 1 — travel along path
       final dist = cs.pathCtrl.value * _table!.totalLength;
       final pos  = _table!.positionAt(dist);
       return Positioned(
@@ -395,21 +396,22 @@ class _TopicsToStoryAnimationWidgetState
         child:  _cardWidget(index),
       );
     } else {
+      // Phase 2 — expand from card size → expandedSize (top-left anchor)
+      // Phase 3 — slide right if a newer card arrived
       final eased = _smootherstep(cs.expandCtrl.value);
-
       final slideOffset = lerpDouble(
           cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
-
-      // Use the exact pixel captured at end of travel — no snap
-      final startLeft = cs.lastTravelPos.dx - cardW / 2;
-      final startTop  = cs.lastTravelPos.dy - cardH / 2;
 
       final startScale = cardW / expS;
       final scale      = lerpDouble(startScale, 1.0, eased)!;
 
+      // Anchor top-left to the exact pixel where travel ended
+      final left = cs.lastTravelPos.dx - cardW / 2 + slideOffset;
+      final top  = cs.lastTravelPos.dy - cardH / 2;
+
       return Positioned(
-        left:   startLeft + slideOffset,
-        top:    startTop,
+        left:   left,
+        top:    top,
         width:  expS,
         height: expS,
         child: Transform(
@@ -421,6 +423,58 @@ class _TopicsToStoryAnimationWidgetState
         ),
       );
     }
+  }
+
+  /// Shown after every card settles. Positioned at the same vertical
+  /// coordinate the cards were at during animation so there's no jump.
+  Widget _buildScrollableCards() {
+    if (_table == null) return const SizedBox.shrink();
+
+    final expS    = widget.expandedSize;
+    final cardW   = widget.cardSize.width;
+    final cardH   = widget.cardSize.height;
+    final endPos  = _table!.endPosition;
+
+    // Match the top position the last (rightmost at landing) card had
+    final top  = endPos.dy - cardH / 2;
+    // The last card (idx = _cardCount-1) has zero slide, so its left
+    // edge is: endPos.dx - cardW/2. Start the scroll row from there.
+    final left = endPos.dx - cardW / 2;
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: left,
+          top:  top,
+          // Constrain the scroll view to screen width from its start
+          // point so it doesn't grow infinitely rightward.
+          width: 2000, // generous; scroll view clips to its content
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(_cardCount, (i) {
+                // Cards arrive in reverse slide order: last card has
+                // offset 0, first card has offset (n-1)*step.
+                // In the scrollable we just show them left-to-right
+                // in natural order (A, B, C, D).
+                return Padding(
+                  padding: EdgeInsets.only(
+                    right: i < _cardCount - 1 ? widget.cardGap : 0,
+                  ),
+                  child: SizedBox(
+                    width:  expS,
+                    height: expS,
+                    child:  _cardWidget(i),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _cardWidget(int index) {
@@ -439,6 +493,8 @@ class _TopicsToStoryAnimationWidgetState
       ),
     );
   }
+
+  // ── controls ──────────────────────────────────────────────────────
 
   Widget _buildControls() {
     return Padding(
