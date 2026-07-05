@@ -262,14 +262,7 @@ class _TopicsToStoryAnimationWidgetState
 
   void _onTravelDone(int idx) {
     if (!mounted || _table == null) return;
-
     _cards[idx].lastTravelPos = _table!.positionAt(_table!.totalLength);
-
-    // Slide all already-settled cards before this card expands
-    for (int i = 0; i < idx; i++) {
-      if (_cards[i].expandComplete) _addSlide(i);
-    }
-
     setState(() {
       _cards[idx].travelDone = true;
       _cards[idx].expandCtrl.forward();
@@ -278,7 +271,14 @@ class _TopicsToStoryAnimationWidgetState
 
   void _onExpandDone(int idx) {
     if (!mounted) return;
-    setState(() => _cards[idx].expandComplete = true);
+    setState(() {
+      _cards[idx].expandComplete = true;
+      // Slide every settled card (including this one) to the right —
+      // clears the landing zone so the next card has empty space to expand into.
+      for (int i = 0; i <= idx; i++) {
+        if (_cards[i].expandComplete) _addSlide(i);
+      }
+    });
   }
 
   void _addSlide(int idx) {
