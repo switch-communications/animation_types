@@ -353,10 +353,10 @@ class _TopicsToStoryAnimationWidgetState
                       builder: (context, _) {
                         final contentW = _contentWidthLocal();
                         final boxWidth = contentW > maxW ? contentW : maxW;
-                        // Centers the path while it's narrower than the viewport;
-                        // continuously relaxes to 0 as pushed cards grow past maxW —
-                        // no snap, since (maxW - contentW)/2 -> 0 exactly as contentW -> maxW.
-                        final shiftX = contentW > maxW ? 0.0 : (maxW - contentW) / 2;
+
+                        // FIX: Calculate shiftX using _areaWidth instead of contentW
+                        // so the path anchor point remains perfectly static.
+                        final shiftX = _areaWidth > maxW ? 0.0 : (maxW - _areaWidth) / 2;
                         final shiftY = maxH > _areaHeight ? (maxH - _areaHeight) / 2 : 0.0;
                         final boxHeight = maxH > _areaHeight ? maxH : _areaHeight;
 
