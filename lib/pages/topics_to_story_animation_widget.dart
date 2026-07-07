@@ -1,4 +1,3 @@
-import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 
 // =====================================================================
@@ -48,18 +47,12 @@ class _WaterfallPath {
     final c2b   = p(2.49973, 275.783);
     final e2    = p(2.5,   400.283);
 
-    final seg1 = Path()
-      ..moveTo(start.dx, start.dy)
-      ..cubicTo(c1a.dx, c1a.dy, c1b.dx, c1b.dy, e1.dx, e1.dy);
-
     final seg1and2 = Path()
       ..moveTo(start.dx, start.dy)
       ..cubicTo(c1a.dx, c1a.dy, c1b.dx, c1b.dy, e1.dx, e1.dy)
       ..cubicTo(c2a.dx, c2a.dy, c2b.dx, c2b.dy, e2.dx, e2.dy);
 
-    final s1  = seg1.computeMetrics().first.length;
-    final s12 = seg1and2.computeMetrics().first.length;
-    return s1 + (s12 - s1) / 2;
+    return seg1and2.computeMetrics().first.length;
   }
 }
 
@@ -102,36 +95,34 @@ class _CardState {
   _CardState({
     required this.pathCtrl,
     required this.expandCtrl,
-    required this.slideCtrl,
+    required this.pushCtrl,
   });
 
   final AnimationController pathCtrl;
   final AnimationController expandCtrl;
-  final AnimationController slideCtrl;
+  final AnimationController pushCtrl;
 
-  bool   travelDone        = false;
-  bool   nextTriggered     = false;
-  bool   expandComplete    = false;
-  double slideBaseOffset   = 0.0;
-  double slideTargetOffset = 0.0;
-  Offset lastTravelPos     = Offset.zero;
+  bool   travelDone     = false;
+  bool   nextTriggered  = false;
+  bool   expandComplete = false;
+  bool   pushDone       = false;
+  Offset lastTravelPos  = Offset.zero;
 
   void dispose() {
     pathCtrl.dispose();
     expandCtrl.dispose();
-    slideCtrl.dispose();
+    pushCtrl.dispose();
   }
 
   void reset() {
     pathCtrl.reset();
     expandCtrl.reset();
-    slideCtrl.reset();
-    travelDone        = false;
-    nextTriggered     = false;
-    expandComplete    = false;
-    slideBaseOffset   = 0.0;
-    slideTargetOffset = 0.0;
-    lastTravelPos     = Offset.zero;
+    pushCtrl.reset();
+    travelDone     = false;
+    nextTriggered  = false;
+    expandComplete = false;
+    pushDone       = false;
+    lastTravelPos  = Offset.zero;
   }
 }
 
@@ -144,7 +135,7 @@ class TopicsToStoryAnimationWidget extends StatefulWidget {
     this.letters         = const ['A', 'B', 'C', 'D'],
     this.travelMs        = 2000,
     this.expandMs        = 500,
-    this.slideMs         = 400,
+    this.slideMs         = 500,
     this.cardSize        = const Size(150, 70),
     this.expandedSize    = 300.0,
     this.cardGap         = 12.0,
@@ -192,8 +183,15 @@ class _TopicsToStoryAnimationWidgetState
 
   int    get _cardCount => widget.letters.length;
   double get _slideStep => widget.expandedSize + widget.cardGap;
-  bool   get _allSettled =>
-      _cards.isNotEmpty && _cards.every((cs) => cs.expandComplete);
+
+  bool get _allSettled {
+    if (_cards.isEmpty) return false;
+    for (int i = 0; i < _cardCount; i++) {
+      if (!_cards[i].expandComplete) return false;
+      if (i < _cardCount - 1 && !_cards[i].pushDone) return false;
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -222,7 +220,7 @@ class _TopicsToStoryAnimationWidgetState
         vsync:    this,
         duration: Duration(milliseconds: widget.expandMs),
       );
-      final slideCtrl = AnimationController(
+      final pushCtrl = AnimationController(
         vsync:    this,
         duration: Duration(milliseconds: widget.slideMs),
       );
@@ -230,7 +228,7 @@ class _TopicsToStoryAnimationWidgetState
       final cs = _CardState(
         pathCtrl:   pathCtrl,
         expandCtrl: expandCtrl,
-        slideCtrl:  slideCtrl,
+        pushCtrl:   pushCtrl,
       );
       _cards.add(cs);
 
@@ -238,11 +236,12 @@ class _TopicsToStoryAnimationWidgetState
       pathCtrl.addStatusListener((s) {
         if (s == AnimationStatus.completed) _onTravelDone(idx);
       });
-      expandCtrl.addListener(() { if (mounted) setState(() {}); });
       expandCtrl.addStatusListener((s) {
         if (s == AnimationStatus.completed) _onExpandDone(idx);
       });
-      slideCtrl.addListener(() { if (mounted) setState(() {}); });
+      pushCtrl.addStatusListener((s) {
+        if (s == AnimationStatus.completed) _onPushDone(idx);
+      });
     }
   }
 
@@ -251,7 +250,6 @@ class _TopicsToStoryAnimationWidgetState
   void _onPathTick(int idx) {
     if (!mounted || _table == null) return;
     final cs = _cards[idx];
-    // When this card crosses the mid-point of curve 2, launch the next card
     if (!cs.nextTriggered &&
         cs.pathCtrl.value * _table!.totalLength >= _triggerDist) {
       cs.nextTriggered = true;
@@ -262,32 +260,39 @@ class _TopicsToStoryAnimationWidgetState
 
   void _onTravelDone(int idx) {
     if (!mounted || _table == null) return;
-    _cards[idx].lastTravelPos = _table!.positionAt(_table!.totalLength);
     setState(() {
-      _cards[idx].travelDone = true;
+      _cards[idx].lastTravelPos = _table!.positionAt(_table!.totalLength);
+      _cards[idx].travelDone    = true;
       _cards[idx].expandCtrl.forward();
     });
   }
 
   void _onExpandDone(int idx) {
     if (!mounted) return;
-    setState(() {
-      _cards[idx].expandComplete = true;
-      // Slide every settled card (including this one) to the right —
-      // clears the landing zone so the next card has empty space to expand into.
-      for (int i = 0; i <= idx; i++) {
-        if (_cards[i].expandComplete) _addSlide(i);
-      }
-    });
+    setState(() => _cards[idx].expandComplete = true);
+    if (idx < _cardCount - 1) {
+      _cards[idx].pushCtrl.forward(from: 0);
+    }
   }
 
-  void _addSlide(int idx) {
-    final cs      = _cards[idx];
-    final current = lerpDouble(
-        cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
-    cs.slideBaseOffset   = current;
-    cs.slideTargetOffset = current + _slideStep;
-    cs.slideCtrl.forward(from: 0);
+  void _onPushDone(int idx) {
+    if (!mounted) return;
+    setState(() => _cards[idx].pushDone = true);
+  }
+
+  double _currentOffsetFor(int i) {
+    double offset = 0.0;
+    for (int k = i; k < _cardCount; k++) {
+      if (k == _cardCount - 1) continue;
+      final ck = _cards[k];
+      if (!ck.expandComplete) continue;
+      if (ck.pushDone) {
+        offset += _slideStep;
+      } else {
+        offset += _slideStep * _smootherstep(ck.pushCtrl.value);
+      }
+    }
+    return offset;
   }
 
   void _launchCard(int idx) {
@@ -339,30 +344,42 @@ class _TopicsToStoryAnimationWidgetState
                   if (_areaWidth  > maxW) WidgetsBinding.instance.addPostFrameCallback((_) => setState(() => _areaWidth  = maxW));
                   if (_areaHeight > maxH) WidgetsBinding.instance.addPostFrameCallback((_) => setState(() => _areaHeight = maxH));
 
-                  // The animation area — shared for both animation and
-                  // scrollable phases so position never jumps.
-                  return Center(
-                    child: SizedBox(
-                      width:  _areaWidth,
-                      height: _areaHeight,
-                      child: OverflowBox(
-                        maxWidth:  double.infinity,
-                        maxHeight: double.infinity,
-                        alignment: Alignment.topLeft,
-                        child: _allSettled
-                            ? _buildScrollableCards()
-                            : Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            if (widget.showDebugPath && _path != null)
-                              CustomPaint(
-                                size: Size(_areaWidth, _areaHeight),
-                                painter: _DebugPathPainter(_path!),
-                              ),
-                            ...List.generate(_cardCount, _buildCard),
-                          ],
-                        ),
-                      ),
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: AnimatedBuilder(
+                      animation: Listenable.merge([
+                        for (final cs in _cards) ...[cs.pathCtrl, cs.expandCtrl, cs.pushCtrl],
+                      ]),
+                      builder: (context, _) {
+                        final contentW = _contentWidthLocal();
+                        final boxWidth = contentW > maxW ? contentW : maxW;
+                        // Centers the path while it's narrower than the viewport;
+                        // continuously relaxes to 0 as pushed cards grow past maxW —
+                        // no snap, since (maxW - contentW)/2 -> 0 exactly as contentW -> maxW.
+                        final shiftX = contentW > maxW ? 0.0 : (maxW - contentW) / 2;
+                        final shiftY = maxH > _areaHeight ? (maxH - _areaHeight) / 2 : 0.0;
+                        final boxHeight = maxH > _areaHeight ? maxH : _areaHeight;
+
+                        return SizedBox(
+                          width:  boxWidth,
+                          height: boxHeight,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              if (widget.showDebugPath && _path != null && !_allSettled)
+                                Positioned(
+                                  left: shiftX,
+                                  top:  shiftY,
+                                  child: CustomPaint(
+                                    size:    Size(_areaWidth, _areaHeight),
+                                    painter: _DebugPathPainter(_path!),
+                                  ),
+                                ),
+                              ...List.generate(_cardCount, (i) => _buildCard(i, shiftX, shiftY)),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   );
                 },
@@ -374,9 +391,18 @@ class _TopicsToStoryAnimationWidgetState
     );
   }
 
-  // ── card builders ─────────────────────────────────────────────────
 
-  Widget _buildCard(int index) {
+  double _contentWidthLocal() {
+    if (_table == null || _cardCount == 0) return _areaWidth;
+    final endPos  = _table!.endPosition;
+    final cardW   = widget.cardSize.width;
+    final expS    = widget.expandedSize;
+    final offset0 = _currentOffsetFor(0); // card 0 is always pushed furthest
+    final rightEdge = endPos.dx - cardW / 2 + offset0 + expS;
+    return rightEdge > _areaWidth ? rightEdge : _areaWidth;
+  }
+
+  Widget _buildCard(int index, double shiftX, double shiftY) {
     if (!_started[index] || _table == null) return const SizedBox.shrink();
 
     final cs    = _cards[index];
@@ -385,95 +411,39 @@ class _TopicsToStoryAnimationWidgetState
     final cardH = widget.cardSize.height;
 
     if (!cs.travelDone) {
-      // Phase 1 — travel along path
       final dist = cs.pathCtrl.value * _table!.totalLength;
       final pos  = _table!.positionAt(dist);
       return Positioned(
-        left:   pos.dx - cardW / 2,
-        top:    pos.dy - cardH / 2,
+        left:   shiftX + pos.dx - cardW / 2,
+        top:    shiftY + pos.dy - cardH / 2,
         width:  cardW,
         height: cardH,
         child:  _cardWidget(index),
       );
-    } else {
-      // Phase 2 — expand from card size → expandedSize (top-left anchor)
-      // Phase 3 — slide right if a newer card arrived
-      final eased = _smootherstep(cs.expandCtrl.value);
-      final slideOffset = lerpDouble(
-          cs.slideBaseOffset, cs.slideTargetOffset, cs.slideCtrl.value)!;
-
-      final startScale = cardW / expS;
-      final scale      = lerpDouble(startScale, 1.0, eased)!;
-
-      // Anchor top-left to the exact pixel where travel ended
-      final left = cs.lastTravelPos.dx - cardW / 2 + slideOffset;
-      final top  = cs.lastTravelPos.dy - cardH / 2;
-
-      return Positioned(
-        left:   left,
-        top:    top,
-        width:  expS,
-        height: expS,
-        child: Transform(
-          alignment: Alignment.topLeft,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.0008)
-            ..scale(scale, scale, 1.0),
-          child: _cardWidget(index),
-        ),
-      );
     }
-  }
 
-  /// Shown after every card settles. Positioned at the same vertical
-  /// coordinate the cards were at during animation so there's no jump.
-  Widget _buildScrollableCards() {
-    if (_table == null) return const SizedBox.shrink();
+    final ownEase      = _smootherstep(cs.expandCtrl.value);
+    final naturalWidth = (cardW + (expS - cardW) * ownEase).clamp(cardW, expS);
+    double widthNow    = naturalWidth;
+    if (index > 0) {
+      final clearance = _currentOffsetFor(index - 1).clamp(cardW, expS);
+      if (clearance < widthNow) widthNow = clearance;
+    }
+    final scale  = widthNow / expS;
+    final offset = _currentOffsetFor(index);
 
-    final expS    = widget.expandedSize;
-    final cardW   = widget.cardSize.width;
-    final cardH   = widget.cardSize.height;
-    final endPos  = _table!.endPosition;
-
-    // Match the top position the last (rightmost at landing) card had
-    final top  = endPos.dy - cardH / 2;
-    // The last card (idx = _cardCount-1) has zero slide, so its left
-    // edge is: endPos.dx - cardW/2. Start the scroll row from there.
-    final left = endPos.dx - cardW / 2;
-
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: left,
-          top:  top,
-          // Constrain the scroll view to screen width from its start
-          // point so it doesn't grow infinitely rightward.
-          width: 2000, // generous; scroll view clips to its content
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: List.generate(_cardCount, (i) {
-                // Cards arrive in reverse slide order: last card has
-                // offset 0, first card has offset (n-1)*step.
-                // In the scrollable we just show them left-to-right
-                // in natural order (A, B, C, D).
-                return Padding(
-                  padding: EdgeInsets.only(
-                    right: i < _cardCount - 1 ? widget.cardGap : 0,
-                  ),
-                  child: SizedBox(
-                    width:  expS,
-                    height: expS,
-                    child:  _cardWidget(i),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ),
-      ],
+    return Positioned(
+      left:   shiftX + cs.lastTravelPos.dx - cardW / 2 + offset,
+      top:    shiftY + cs.lastTravelPos.dy - cardH / 2,
+      width:  expS,
+      height: expS,
+      child: Transform(
+        alignment: Alignment.topLeft,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, 0.0008)
+          ..scale(scale, scale, 1.0),
+        child: _cardWidget(index),
+      ),
     );
   }
 
