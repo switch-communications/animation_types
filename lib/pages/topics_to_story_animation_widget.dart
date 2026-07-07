@@ -175,8 +175,8 @@ class _TopicsToStoryAnimationWidgetState
   _ArcLengthTable? _table;
   double           _triggerDist = 0;
 
-  double _areaWidth  = 264;
-  double _areaHeight = 539;
+  double _areaWidth  = 120;
+  double _areaHeight = 250;
 
   List<_CardState> _cards   = [];
   List<bool>       _started = [];
@@ -351,14 +351,14 @@ class _TopicsToStoryAnimationWidgetState
                         for (final cs in _cards) ...[cs.pathCtrl, cs.expandCtrl, cs.pushCtrl],
                       ]),
                       builder: (context, _) {
-                        final contentW = _contentWidthLocal();
-                        final boxWidth = contentW > maxW ? contentW : maxW;
-
-                        // FIX: Calculate shiftX using _areaWidth instead of contentW
-                        // so the path anchor point remains perfectly static.
+                        // 1. Calculate shiftX first
                         final shiftX = _areaWidth > maxW ? 0.0 : (maxW - _areaWidth) / 2;
                         final shiftY = maxH > _areaHeight ? (maxH - _areaHeight) / 2 : 0.0;
                         final boxHeight = maxH > _areaHeight ? maxH : _areaHeight;
+
+                        // 2. Pass shiftX to get the true, unclipped content width
+                        final contentW = _contentWidthLocal(shiftX);
+                        final boxWidth = contentW > maxW ? contentW : maxW;
 
                         return SizedBox(
                           width:  boxWidth,
@@ -392,13 +392,17 @@ class _TopicsToStoryAnimationWidgetState
   }
 
 
-  double _contentWidthLocal() {
+  double _contentWidthLocal(double shiftX) {
     if (_table == null || _cardCount == 0) return _areaWidth;
     final endPos  = _table!.endPosition;
     final cardW   = widget.cardSize.width;
     final expS    = widget.expandedSize;
-    final offset0 = _currentOffsetFor(0); // card 0 is always pushed furthest
-    final rightEdge = endPos.dx - cardW / 2 + offset0 + expS;
+    final offset0 = _currentOffsetFor(0);
+
+    // FIX: Add a small layout safety buffer (widget.cardSize.width / 2)
+    // to compensate for the unscaled Matrix4 rendering boundary.
+    final rightEdge = shiftX + (endPos.dx - cardW / 2) + offset0 + expS + (cardW / 2);
+
     return rightEdge > _areaWidth ? rightEdge : _areaWidth;
   }
 
