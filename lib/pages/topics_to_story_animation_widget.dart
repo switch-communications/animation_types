@@ -250,8 +250,13 @@ class _TopicsToStoryAnimationWidgetState
   void _onPathTick(int idx) {
     if (!mounted || _table == null) return;
     final cs = _cards[idx];
+
+    // Get the actual curved visual progress of the card
+    final curvedValue = Curves.easeOut.transform(cs.pathCtrl.value);
+
+    // Check if the visual progress has crossed the physical trigger point
     if (!cs.nextTriggered &&
-        cs.pathCtrl.value * _table!.totalLength >= _triggerDist) {
+        curvedValue * _table!.totalLength >= _triggerDist) {
       cs.nextTriggered = true;
       _launchCard(idx + 1);
     }
@@ -312,7 +317,10 @@ class _TopicsToStoryAnimationWidgetState
     _areaSize    = size;
     _path        = _WaterfallPath.build(size);
     _table       = _ArcLengthTable(_path!);
-    _triggerDist = _WaterfallPath.triggerArcLength(size);
+
+    // Add a tiny buffer (+ 20.0 or 30.0) if you want the next card to hold back a bit longer
+    _triggerDist = _WaterfallPath.triggerArcLength(size) + 25.0;
+
     for (final cs in _cards) {
       cs.pathCtrl.duration = Duration(milliseconds: widget.travelMs);
     }
@@ -415,7 +423,9 @@ class _TopicsToStoryAnimationWidgetState
     final cardH = widget.cardSize.height;
 
     if (!cs.travelDone) {
-      final dist = cs.pathCtrl.value * _table!.totalLength;
+      // Transform the linear value to an ease-out curve here as well
+      final curvedValue = Curves.easeOut.transform(cs.pathCtrl.value);
+      final dist = curvedValue * _table!.totalLength;
       final pos  = _table!.positionAt(dist);
       return Positioned(
         left:   shiftX + pos.dx - cardW / 2,
