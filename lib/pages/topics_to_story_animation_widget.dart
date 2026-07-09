@@ -57,7 +57,8 @@ class _WaterfallPath {
 }
 
 class _ArcLengthTable {
-  _ArcLengthTable(Path path, {this.samples = 300}) {
+  // Increased samples to 500 for high-density precision tracking
+  _ArcLengthTable(Path path, {this.samples = 500}) {
     final metric  = path.computeMetrics().first;
     totalLength   = metric.length;
     final safeLen = totalLength - 0.01;
@@ -71,10 +72,13 @@ class _ArcLengthTable {
   double       totalLength = 0;
   List<Offset> _points     = [];
 
-  Offset positionAt(double distance) {
-    final f = (distance.clamp(0, totalLength) / totalLength * samples);
-    final i = f.floor().clamp(0, samples - 1);
-    return Offset.lerp(_points[i], _points[i + 1], f - i)!;
+  // FIX: Jolt-free progressive positioning math using raw fractional lookups
+  Offset positionAtProgress(double t) {
+    if (_points.isEmpty) return Offset.zero;
+    final double exactIndexFraction = t.clamp(0.0, 1.0) * samples;
+    final int index = exactIndexFraction.floor().clamp(0, samples - 1);
+    final double remainder = exactIndexFraction - index;
+    return Offset.lerp(_points[index], _points[index + 1], remainder)!;
   }
 
   Offset get endPosition => _points.isEmpty ? Offset.zero : _points[samples];
@@ -94,7 +98,6 @@ class _CardState {
     required this.pushCtrl,
   });
 
-  // Handles BOTH path movement and expansion on a unified timeline
   final AnimationController mainCtrl;
   final AnimationController pushCtrl;
 
@@ -121,8 +124,8 @@ class TopicsToStoryAnimationWidget extends StatefulWidget {
   const TopicsToStoryAnimationWidget({
     super.key,
     this.letters         = const ['A', 'B', 'C', 'D'],
-    this.totalJourneyMs  = 2200, // Total time for a single card to travel AND expand
-    this.slideMs         = 500,  // Push-away list animation step duration
+    this.totalJourneyMs  = 2200,
+    this.slideMs         = 500,
     this.cardSize        = const Size(150, 70),
     this.expandedSize    = 300.0,
     this.cardGap         = 12.0,
@@ -170,7 +173,7 @@ class _TopicsToStoryAnimationWidgetState
   int    get _cardCount => widget.letters.length;
   double get _slideStep => widget.expandedSize + widget.cardGap;
 
-  // Custom Quadratic Ease-Out for the initial travel burst velocity profile
+  // Custom deceleration velocity mapping curve curve
   double _getBurstCurve(double t) {
     return t * (2.0 - t);
   }
@@ -232,10 +235,8 @@ class _TopicsToStoryAnimationWidgetState
     if (!mounted || _table == null) return;
     final cs = _cards[idx];
 
-    // Read uniform progressive distance mapping
     final double pathProgress = _getBurstCurve(cs.mainCtrl.value);
 
-    // Cascade trigger the next item sequentially downstream
     if (!cs.nextTriggered && pathProgress * _table!.totalLength >= _triggerDist) {
       cs.nextTriggered = true;
       _launchCard(idx + 1);
@@ -377,16 +378,13 @@ class _TopicsToStoryAnimationWidgetState
     final cardW = widget.cardSize.width;
     final cardH = widget.cardSize.height;
 
-    // UNIFIED STATE TIMELINE
     final double rawProgress = cs.mainCtrl.value;
 
-    // 1. Movement position uses our quick quadratic ease profile
+    // FIX: Instead of calling positionAt(distance), look up position via
+    // fractional point table index. This results in incredibly buttery movement loops.
     final double movementProgress = _getBurstCurve(rawProgress);
-    final Offset pathPos = _table!.positionAt(movementProgress * _table!.totalLength);
+    final Offset pathPos = _table!.positionAtProgress(movementProgress);
 
-    // 2. Continuous Top-Left Expansion calculation
-    // Starts exactly at 65% of the flight path and scales smoothly up to 100%
-    // while the card is still completing its movement down the curve.
     double scaleFactor = 0.0;
     if (rawProgress >= 0.65) {
       final double normalizedScaleProgress = (rawProgress - 0.65) / 0.35;
@@ -396,10 +394,8 @@ class _TopicsToStoryAnimationWidgetState
     final double currentW = cardW + (expS - cardW) * scaleFactor;
     final double currentH = cardH + (expS - cardH) * scaleFactor;
 
-    // Horizontal arrangement shift calculation
     final double horizontalOffset = _currentOffsetFor(index);
 
-    // Anchor calculation locks the Top-Left corner origin dynamically
     return Positioned(
       left:   shiftX + (pathPos.dx - cardW / 2) + horizontalOffset,
       top:    shiftY + (pathPos.dy - cardH / 2),
