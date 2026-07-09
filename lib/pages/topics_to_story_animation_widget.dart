@@ -56,9 +56,6 @@ class _WaterfallPath {
   }
 }
 
-// =====================================================================
-// Arc-length lookup table
-// =====================================================================
 class _ArcLengthTable {
   _ArcLengthTable(Path path, {this.samples = 300}) {
     final metric  = path.computeMetrics().first;
@@ -89,40 +86,31 @@ double _smootherstep(double t) {
 }
 
 // =====================================================================
-// Per-card state
+// Per-card simplified state
 // =====================================================================
 class _CardState {
   _CardState({
-    required this.pathCtrl,
-    required this.expandCtrl,
+    required this.mainCtrl,
     required this.pushCtrl,
   });
 
-  final AnimationController pathCtrl;
-  final AnimationController expandCtrl;
+  // Handles BOTH path movement and expansion on a unified timeline
+  final AnimationController mainCtrl;
   final AnimationController pushCtrl;
 
-  bool   travelDone     = false;
-  bool   nextTriggered  = false;
-  bool   expandComplete = false;
-  bool   pushDone       = false;
-  Offset lastTravelPos  = Offset.zero;
+  bool nextTriggered = false;
+  bool pushDone      = false;
 
   void dispose() {
-    pathCtrl.dispose();
-    expandCtrl.dispose();
+    mainCtrl.dispose();
     pushCtrl.dispose();
   }
 
   void reset() {
-    pathCtrl.reset();
-    expandCtrl.reset();
+    mainCtrl.reset();
     pushCtrl.reset();
-    travelDone     = false;
-    nextTriggered  = false;
-    expandComplete = false;
-    pushDone       = false;
-    lastTravelPos  = Offset.zero;
+    nextTriggered = false;
+    pushDone      = false;
   }
 }
 
@@ -133,9 +121,8 @@ class TopicsToStoryAnimationWidget extends StatefulWidget {
   const TopicsToStoryAnimationWidget({
     super.key,
     this.letters         = const ['A', 'B', 'C', 'D'],
-    this.travelMs        = 2000,
-    this.expandMs        = 500,
-    this.slideMs         = 500,
+    this.totalJourneyMs  = 2200, // Total time for a single card to travel AND expand
+    this.slideMs         = 500,  // Push-away list animation step duration
     this.cardSize        = const Size(150, 70),
     this.expandedSize    = 300.0,
     this.cardGap         = 12.0,
@@ -149,8 +136,7 @@ class TopicsToStoryAnimationWidget extends StatefulWidget {
   });
 
   final List<String> letters;
-  final int    travelMs;
-  final int    expandMs;
+  final int    totalJourneyMs;
   final int    slideMs;
   final Size   cardSize;
   final double expandedSize;
@@ -184,10 +170,15 @@ class _TopicsToStoryAnimationWidgetState
   int    get _cardCount => widget.letters.length;
   double get _slideStep => widget.expandedSize + widget.cardGap;
 
+  // Custom Quadratic Ease-Out for the initial travel burst velocity profile
+  double _getBurstCurve(double t) {
+    return t * (2.0 - t);
+  }
+
   bool get _allSettled {
     if (_cards.isEmpty) return false;
     for (int i = 0; i < _cardCount; i++) {
-      if (!_cards[i].expandComplete) return false;
+      if (!_cards[i].mainCtrl.isCompleted) return false;
       if (i < _cardCount - 1 && !_cards[i].pushDone) return false;
     }
     return true;
@@ -212,13 +203,9 @@ class _TopicsToStoryAnimationWidgetState
     for (int i = 0; i < _cardCount; i++) {
       final idx = i;
 
-      final pathCtrl = AnimationController(
+      final mainCtrl = AnimationController(
         vsync:    this,
-        duration: Duration(milliseconds: widget.travelMs),
-      );
-      final expandCtrl = AnimationController(
-        vsync:    this,
-        duration: Duration(milliseconds: widget.expandMs),
+        duration: Duration(milliseconds: widget.totalJourneyMs),
       );
       final pushCtrl = AnimationController(
         vsync:    this,
@@ -226,18 +213,14 @@ class _TopicsToStoryAnimationWidgetState
       );
 
       final cs = _CardState(
-        pathCtrl:   pathCtrl,
-        expandCtrl: expandCtrl,
-        pushCtrl:   pushCtrl,
+        mainCtrl: mainCtrl,
+        pushCtrl: pushCtrl,
       );
       _cards.add(cs);
 
-      pathCtrl.addListener(() => _onPathTick(idx));
-      pathCtrl.addStatusListener((s) {
-        if (s == AnimationStatus.completed) _onTravelDone(idx);
-      });
-      expandCtrl.addStatusListener((s) {
-        if (s == AnimationStatus.completed) _onExpandDone(idx);
+      mainCtrl.addListener(() => _onMainTick(idx));
+      mainCtrl.addStatusListener((s) {
+        if (s == AnimationStatus.completed) _onMainJourneyDone(idx);
       });
       pushCtrl.addStatusListener((s) {
         if (s == AnimationStatus.completed) _onPushDone(idx);
@@ -245,36 +228,23 @@ class _TopicsToStoryAnimationWidgetState
     }
   }
 
-  // ── phase listeners ───────────────────────────────────────────────
-
-  void _onPathTick(int idx) {
+  void _onMainTick(int idx) {
     if (!mounted || _table == null) return;
     final cs = _cards[idx];
 
-    // Get the actual curved visual progress of the card
-    final curvedValue = Curves.easeOut.transform(cs.pathCtrl.value);
+    // Read uniform progressive distance mapping
+    final double pathProgress = _getBurstCurve(cs.mainCtrl.value);
 
-    // Check if the visual progress has crossed the physical trigger point
-    if (!cs.nextTriggered &&
-        curvedValue * _table!.totalLength >= _triggerDist) {
+    // Cascade trigger the next item sequentially downstream
+    if (!cs.nextTriggered && pathProgress * _table!.totalLength >= _triggerDist) {
       cs.nextTriggered = true;
       _launchCard(idx + 1);
     }
     setState(() {});
   }
 
-  void _onTravelDone(int idx) {
-    if (!mounted || _table == null) return;
-    setState(() {
-      _cards[idx].lastTravelPos = _table!.positionAt(_table!.totalLength);
-      _cards[idx].travelDone    = true;
-      _cards[idx].expandCtrl.forward();
-    });
-  }
-
-  void _onExpandDone(int idx) {
+  void _onMainJourneyDone(int idx) {
     if (!mounted) return;
-    setState(() => _cards[idx].expandComplete = true);
     if (idx < _cardCount - 1) {
       _cards[idx].pushCtrl.forward(from: 0);
     }
@@ -290,7 +260,7 @@ class _TopicsToStoryAnimationWidgetState
     for (int k = i; k < _cardCount; k++) {
       if (k == _cardCount - 1) continue;
       final ck = _cards[k];
-      if (!ck.expandComplete) continue;
+      if (!ck.mainCtrl.isCompleted && ck.mainCtrl.value < 0.65) continue;
       if (ck.pushDone) {
         offset += _slideStep;
       } else {
@@ -303,7 +273,7 @@ class _TopicsToStoryAnimationWidgetState
   void _launchCard(int idx) {
     if (idx >= _cardCount || _started[idx]) return;
     _started[idx] = true;
-    _cards[idx].pathCtrl.forward();
+    _cards[idx].mainCtrl.forward();
   }
 
   void play() {
@@ -317,13 +287,7 @@ class _TopicsToStoryAnimationWidgetState
     _areaSize    = size;
     _path        = _WaterfallPath.build(size);
     _table       = _ArcLengthTable(_path!);
-
-    // Add a tiny buffer (+ 20.0 or 30.0) if you want the next card to hold back a bit longer
-    _triggerDist = _WaterfallPath.triggerArcLength(size) + 25.0;
-
-    for (final cs in _cards) {
-      cs.pathCtrl.duration = Duration(milliseconds: widget.travelMs);
-    }
+    _triggerDist = _WaterfallPath.triggerArcLength(size) + 15.0;
   }
 
   @override
@@ -331,8 +295,6 @@ class _TopicsToStoryAnimationWidgetState
     for (final cs in _cards) cs.dispose();
     super.dispose();
   }
-
-  // ── build ─────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -356,15 +318,13 @@ class _TopicsToStoryAnimationWidgetState
                     scrollDirection: Axis.horizontal,
                     child: AnimatedBuilder(
                       animation: Listenable.merge([
-                        for (final cs in _cards) ...[cs.pathCtrl, cs.expandCtrl, cs.pushCtrl],
+                        for (final cs in _cards) ...[cs.mainCtrl, cs.pushCtrl],
                       ]),
                       builder: (context, _) {
-                        // 1. Calculate shiftX first
                         final shiftX = _areaWidth > maxW ? 0.0 : (maxW - _areaWidth) / 2;
                         final shiftY = maxH > _areaHeight ? (maxH - _areaHeight) / 2 : 0.0;
                         final boxHeight = maxH > _areaHeight ? maxH : _areaHeight;
 
-                        // 2. Pass shiftX to get the true, unclipped content width
                         final contentW = _contentWidthLocal(shiftX);
                         final boxWidth = contentW > maxW ? contentW : maxW;
 
@@ -399,18 +359,13 @@ class _TopicsToStoryAnimationWidgetState
     );
   }
 
-
   double _contentWidthLocal(double shiftX) {
     if (_table == null || _cardCount == 0) return _areaWidth;
     final endPos  = _table!.endPosition;
     final cardW   = widget.cardSize.width;
     final expS    = widget.expandedSize;
     final offset0 = _currentOffsetFor(0);
-
-    // FIX: Add a small layout safety buffer (widget.cardSize.width / 2)
-    // to compensate for the unscaled Matrix4 rendering boundary.
     final rightEdge = shiftX + (endPos.dx - cardW / 2) + offset0 + expS + (cardW / 2);
-
     return rightEdge > _areaWidth ? rightEdge : _areaWidth;
   }
 
@@ -422,42 +377,35 @@ class _TopicsToStoryAnimationWidgetState
     final cardW = widget.cardSize.width;
     final cardH = widget.cardSize.height;
 
-    if (!cs.travelDone) {
-      // Transform the linear value to an ease-out curve here as well
-      final curvedValue = Curves.easeOut.transform(cs.pathCtrl.value);
-      final dist = curvedValue * _table!.totalLength;
-      final pos  = _table!.positionAt(dist);
-      return Positioned(
-        left:   shiftX + pos.dx - cardW / 2,
-        top:    shiftY + pos.dy - cardH / 2,
-        width:  cardW,
-        height: cardH,
-        child:  _cardWidget(index),
-      );
+    // UNIFIED STATE TIMELINE
+    final double rawProgress = cs.mainCtrl.value;
+
+    // 1. Movement position uses our quick quadratic ease profile
+    final double movementProgress = _getBurstCurve(rawProgress);
+    final Offset pathPos = _table!.positionAt(movementProgress * _table!.totalLength);
+
+    // 2. Continuous Top-Left Expansion calculation
+    // Starts exactly at 65% of the flight path and scales smoothly up to 100%
+    // while the card is still completing its movement down the curve.
+    double scaleFactor = 0.0;
+    if (rawProgress >= 0.65) {
+      final double normalizedScaleProgress = (rawProgress - 0.65) / 0.35;
+      scaleFactor = _smootherstep(normalizedScaleProgress);
     }
 
-    final ownEase      = _smootherstep(cs.expandCtrl.value);
-    final naturalWidth = (cardW + (expS - cardW) * ownEase).clamp(cardW, expS);
-    double widthNow    = naturalWidth;
-    if (index > 0) {
-      final clearance = _currentOffsetFor(index - 1).clamp(cardW, expS);
-      if (clearance < widthNow) widthNow = clearance;
-    }
-    final scale  = widthNow / expS;
-    final offset = _currentOffsetFor(index);
+    final double currentW = cardW + (expS - cardW) * scaleFactor;
+    final double currentH = cardH + (expS - cardH) * scaleFactor;
 
+    // Horizontal arrangement shift calculation
+    final double horizontalOffset = _currentOffsetFor(index);
+
+    // Anchor calculation locks the Top-Left corner origin dynamically
     return Positioned(
-      left:   shiftX + cs.lastTravelPos.dx - cardW / 2 + offset,
-      top:    shiftY + cs.lastTravelPos.dy - cardH / 2,
-      width:  expS,
-      height: expS,
-      child: Transform(
-        alignment: Alignment.topLeft,
-        transform: Matrix4.identity()
-          ..setEntry(3, 2, 0.0008)
-          ..scale(scale, scale, 1.0),
-        child: _cardWidget(index),
-      ),
+      left:   shiftX + (pathPos.dx - cardW / 2) + horizontalOffset,
+      top:    shiftY + (pathPos.dy - cardH / 2),
+      width:  currentW,
+      height: currentH,
+      child:  _cardWidget(index),
     );
   }
 
@@ -477,8 +425,6 @@ class _TopicsToStoryAnimationWidgetState
       ),
     );
   }
-
-  // ── controls ──────────────────────────────────────────────────────
 
   Widget _buildControls() {
     return Padding(
@@ -522,9 +468,6 @@ class _TopicsToStoryAnimationWidgetState
   }
 }
 
-// =====================================================================
-// Debug painter
-// =====================================================================
 class _DebugPathPainter extends CustomPainter {
   _DebugPathPainter(this.path);
   final Path path;
