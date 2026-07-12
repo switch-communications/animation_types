@@ -380,8 +380,6 @@ class _TopicsToStoryAnimationWidgetState
 
     final double rawProgress = cs.mainCtrl.value;
 
-    // FIX: Instead of calling positionAt(distance), look up position via
-    // fractional point table index. This results in incredibly buttery movement loops.
     final double movementProgress = _getBurstCurve(rawProgress);
     final Offset pathPos = _table!.positionAtProgress(movementProgress);
 
@@ -396,9 +394,14 @@ class _TopicsToStoryAnimationWidgetState
 
     final double horizontalOffset = _currentOffsetFor(index);
 
+    // CHANGED: Instead of keeping top-anchor static, we subtract half of the total height delta
+    // gained during expansion. This forces the card to expand upwards and downwards at the exact same rate.
+    final double heightDelta = currentH - cardH;
+    final double verticalAnchorCorrection = heightDelta / 2;
+
     return Positioned(
       left:   shiftX + (pathPos.dx - cardW / 2) + horizontalOffset,
-      top:    shiftY + (pathPos.dy - cardH / 2),
+      top:    shiftY + (pathPos.dy - cardH / 2) - verticalAnchorCorrection,
       width:  currentW,
       height: currentH,
       child:  _cardWidget(index),
