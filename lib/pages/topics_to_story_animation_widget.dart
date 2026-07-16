@@ -1,58 +1,176 @@
 import 'package:flutter/material.dart';
 
 // =====================================================================
-// Path geometry — STORIES_WATERFALL_PATH.svg (viewBox 264 x 539)
+// Path geometry — new waterfall path (viewBox 532 x 874)
 // =====================================================================
 class _WaterfallPath {
   static Path build(Size size) {
-    const srcW = 264.0;
-    const srcH = 539.0;
+    const srcW = 532.0;
+    const srcH = 874.0;
     final sx = size.width / srcW;
     final sy = size.height / srcH;
     Offset p(double x, double y) => Offset(x * sx, y * sy);
 
-    final start = p(217.5, 1.78516);
-    final c1a   = p(217.5, 1.78516);
-    final c1b   = p(288.5, 71.2812);
-    final e1    = p(249,   149.276);
-    final c2a   = p(209.5, 227.271);
-    final c2b   = p(2.49973, 275.783);
-    final e2    = p(2.5,   400.283);
-    final c3a   = p(2.50027, 524.784);
-    final c3b   = p(95.5,  535.783);
-    final e3    = p(95.5,  535.783);
+    final start = p(282.217, 2.5);
+
+    final l1 = p(392.793, 261.32);
+
+    final c1a = p(392.793, 261.32);
+    final c1b = p(399.871, 274.708);
+    final e1  = p(400.008, 294.375);
+
+    final c2a = p(400.145, 314.042);
+    final c2b = p(392.817, 328.516);
+    final e2  = p(392.817, 328.516);
+
+    final l2  = p(391.267, 331.813);
+    final l3  = p(389.49,  335.24);
+    final l4  = p(387.924, 337.842);
+    final l5  = p(386.331, 340.06);
+    final l6  = p(382.559, 345.492);
+    final l7  = p(377.834, 351.026);
+    final l8  = p(371.982, 356.684);
+    final l9  = p(367.449, 360.95);
+    final l10 = p(360.168, 367.182);
+    final l11 = p(351.765, 373.67);
+    final l12 = p(60.8886, 583.613);
+
+    final c3a = p(60.8886, 583.613);
+    final c3b = p(2.49927, 624.493);
+    final e3  = p(2.5,     710.11);
+
+    final c4a = p(2.50073, 795.727);
+    final c4b = p(60.8886, 832.581);
+    final e4  = p(60.8886, 832.581);
+
+    final l13 = p(68.9634, 838.973);
+    final l14 = p(74.1941, 842.697);
+    final l15 = p(80.0107, 846.589);
+    final l16 = p(86.8734, 850.648);
+    final l17 = p(92.8574, 853.828);
+    final l18 = p(99.218,  856.841);
+    final l19 = p(102.279, 858.203);
+    final l20 = p(107.767, 860.404);
+    final l21 = p(110.018, 861.268);
+    final l22 = p(112.278, 862.069);
+    final l23 = p(114.371, 862.796);
+    final l24 = p(116.416, 863.447);
+    final l25 = p(117.805, 863.894);
+    final l26 = p(120.049, 864.561);
+    final l27 = p(121.005, 864.848);
+    final l28 = p(123.037, 865.414);
+    final l29 = p(126.525, 866.336);
+    final l30 = p(131.041, 867.379);
+    final l31 = p(136.064, 868.398);
+    final l32 = p(141.033, 869.211);
+    final l33 = p(147.854, 870.131);
+    final l34 = p(154.134, 870.7);
+    final l35 = p(160.171, 870.997);
+    final l36 = p(529.025, 868.398);
 
     final raw = Path()
       ..moveTo(start.dx, start.dy)
+      ..lineTo(l1.dx, l1.dy)
       ..cubicTo(c1a.dx, c1a.dy, c1b.dx, c1b.dy, e1.dx, e1.dy)
       ..cubicTo(c2a.dx, c2a.dy, c2b.dx, c2b.dy, e2.dx, e2.dy)
-      ..cubicTo(c3a.dx, c3a.dy, c3b.dx, c3b.dy, e3.dx, e3.dy);
+      ..lineTo(l2.dx, l2.dy)
+      ..lineTo(l3.dx, l3.dy)
+      ..lineTo(l4.dx, l4.dy)
+      ..lineTo(l5.dx, l5.dy)
+      ..lineTo(l6.dx, l6.dy)
+      ..lineTo(l7.dx, l7.dy)
+      ..lineTo(l8.dx, l8.dy)
+      ..lineTo(l9.dx, l9.dy)
+      ..lineTo(l10.dx, l10.dy)
+      ..lineTo(l11.dx, l11.dy)
+      ..lineTo(l12.dx, l12.dy)
+      ..cubicTo(c3a.dx, c3a.dy, c3b.dx, c3b.dy, e3.dx, e3.dy)
+      ..cubicTo(c4a.dx, c4a.dy, c4b.dx, c4b.dy, e4.dx, e4.dy)
+      ..lineTo(l13.dx, l13.dy)
+      ..lineTo(l14.dx, l14.dy)
+      ..lineTo(l15.dx, l15.dy)
+      ..lineTo(l16.dx, l16.dy)
+      ..lineTo(l17.dx, l17.dy)
+      ..lineTo(l18.dx, l18.dy)
+      ..lineTo(l19.dx, l19.dy)
+      ..lineTo(l20.dx, l20.dy)
+      ..lineTo(l21.dx, l21.dy)
+      ..lineTo(l22.dx, l22.dy)
+      ..lineTo(l23.dx, l23.dy)
+      ..lineTo(l24.dx, l24.dy)
+      ..lineTo(l25.dx, l25.dy)
+      ..lineTo(l26.dx, l26.dy)
+      ..lineTo(l27.dx, l27.dy)
+      ..lineTo(l28.dx, l28.dy)
+      ..lineTo(l29.dx, l29.dy)
+      ..lineTo(l30.dx, l30.dy)
+      ..lineTo(l31.dx, l31.dy)
+      ..lineTo(l32.dx, l32.dy)
+      ..lineTo(l33.dx, l33.dy)
+      ..lineTo(l34.dx, l34.dy)
+      ..lineTo(l35.dx, l35.dy)
+      ..lineTo(l36.dx, l36.dy);
 
     final dx = size.width / 2 - start.dx;
     return raw.shift(Offset(dx, 0));
   }
 
   static double triggerArcLength(Size size) {
-    const srcW = 264.0;
-    const srcH = 539.0;
+    const srcW = 532.0;
+    const srcH = 874.0;
     final sx = size.width / srcW;
     final sy = size.height / srcH;
     Offset p(double x, double y) => Offset(x * sx, y * sy);
 
-    final start = p(217.5, 1.78516);
-    final c1a   = p(217.5, 1.78516);
-    final c1b   = p(288.5, 71.2812);
-    final e1    = p(249,   149.276);
-    final c2a   = p(209.5, 227.271);
-    final c2b   = p(2.49973, 275.783);
-    final e2    = p(2.5,   400.283);
+    final start = p(282.217, 2.5);
+    final l1    = p(392.793, 261.32);
+    final c1a   = p(392.793, 261.32);
+    final c1b   = p(399.871, 274.708);
+    final e1    = p(400.008, 294.375);
+    final c2a   = p(400.145, 314.042);
+    final c2b   = p(392.817, 328.516);
+    final e2    = p(392.817, 328.516);
+    final l2    = p(391.267, 331.813);
+    final l3    = p(389.49,  335.24);
+    final l4    = p(387.924, 337.842);
+    final l5    = p(386.331, 340.06);
+    final l6    = p(382.559, 345.492);
+    final l7    = p(377.834, 351.026);
+    final l8    = p(371.982, 356.684);
+    final l9    = p(367.449, 360.95);
+    final l10   = p(360.168, 367.182);
+    final l11   = p(351.765, 373.67);
+    final l12   = p(60.8886, 583.613);
+    final c3a   = p(60.8886, 583.613);
+    final c3b   = p(2.49927, 624.493);
+    final e3    = p(2.5,     710.11);
+    final c4a   = p(2.50073, 795.727);
+    final c4b   = p(60.8886, 832.581);
+    final e4    = p(60.8886, 832.581);
 
-    final seg1and2 = Path()
+    // Trigger point: where the straight line after the second curve begins
+    // (e4, right before l13) — the next card launches once the current one
+    // reaches it.
+    final segToStraightLine = Path()
       ..moveTo(start.dx, start.dy)
+      ..lineTo(l1.dx, l1.dy)
       ..cubicTo(c1a.dx, c1a.dy, c1b.dx, c1b.dy, e1.dx, e1.dy)
-      ..cubicTo(c2a.dx, c2a.dy, c2b.dx, c2b.dy, e2.dx, e2.dy);
+      ..cubicTo(c2a.dx, c2a.dy, c2b.dx, c2b.dy, e2.dx, e2.dy)
+      ..lineTo(l2.dx, l2.dy)
+      ..lineTo(l3.dx, l3.dy)
+      ..lineTo(l4.dx, l4.dy)
+      ..lineTo(l5.dx, l5.dy)
+      ..lineTo(l6.dx, l6.dy)
+      ..lineTo(l7.dx, l7.dy)
+      ..lineTo(l8.dx, l8.dy)
+      ..lineTo(l9.dx, l9.dy)
+      ..lineTo(l10.dx, l10.dy)
+      ..lineTo(l11.dx, l11.dy)
+      ..lineTo(l12.dx, l12.dy)
+      ..cubicTo(c3a.dx, c3a.dy, c3b.dx, c3b.dy, e3.dx, e3.dy)
+      ..cubicTo(c4a.dx, c4a.dy, c4b.dx, c4b.dy, e4.dx, e4.dy);
 
-    return seg1and2.computeMetrics().first.length;
+    return segToStraightLine.computeMetrics().first.length;
   }
 }
 
@@ -124,14 +242,14 @@ class TopicsToStoryAnimationWidget extends StatefulWidget {
   const TopicsToStoryAnimationWidget({
     super.key,
     this.letters         = const ['A', 'B', 'C', 'D'],
-    this.totalJourneyMs  = 2200,
+    this.totalJourneyMs  = 2000,
     this.slideMs         = 500,
     this.cardSize        = const Size(150, 70),
     this.expandedSize    = 300.0,
     this.cardGap         = 12.0,
     this.autoStart       = false,
     this.showDebugPath   = true,
-    this.initialAreaSize = const Size(264, 539),
+    this.initialAreaSize = const Size(532, 874),
     this.minAreaWidth    = 120,
     this.maxAreaWidth    = 400,
     this.minAreaHeight   = 250,
