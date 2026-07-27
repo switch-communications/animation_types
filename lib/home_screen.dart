@@ -1,3 +1,4 @@
+import 'package:animation_types/pages/more_topics.dart';
 import 'package:animation_types/pages/shop_pillow_animation_page.dart';
 import 'package:animation_types/pages/button_scale_demo.dart';
 import 'package:animation_types/pages/button_size_physics.dart';
@@ -38,6 +39,17 @@ class _HomeScreenState extends State<HomeScreen> {
               AppBar(
                 title: Text("Scroll Physics"),
                 backgroundColor: Colors.lightBlue,
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => SvgPathAnimationWidget(),
+                    ),
+                  );
+                },
+                child: Text("More Topics"),
               ),
               SizedBox(height: 50),
               ElevatedButton(
